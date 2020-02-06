@@ -1,6 +1,15 @@
-class InvalidRequest(Exception):
+from dataclasses import dataclass
+
+
+@dataclass
+class GameError(Exception):
+    code: str
+    description: str
+
+
+class InvalidRequest(GameError):
     pass
 
 
-class InvalidGameState(Exception):
+class InvalidGameState(GameError):
     pass

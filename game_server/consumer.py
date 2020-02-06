@@ -9,7 +9,7 @@ from uuid import UUID
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from game_server.config import NAME_REGEX
-from game_server.exceptions import InvalidRequest, InvalidGameState
+from game_server.exceptions import InvalidRequest, GameError
 from game_server.game import User, GameServer, UpdateType
 
 LOGGER = getLogger("pyXyzzy")
@@ -42,17 +42,11 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
                 return
 
             self.queue.put_nowait(result)
-        except InvalidRequest as ex:
+        except GameError as ex:
             self.queue.put_nowait({
                 "call": call_id,
-                "error": "invalid_request",
-                "description": str(ex)
-            })
-        except InvalidGameState as ex:
-            self.queue.put_nowait({
-                "call": call_id,
-                "error": "invalid_state",
-                "description": str(ex)
+                "error": ex.code,
+                "description": ex.description
             })
         except Exception:
             LOGGER.error("Internal uncaught exception.", exc_info=True)

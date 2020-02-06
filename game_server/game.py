@@ -7,21 +7,28 @@ from enum import Enum, auto
 from hashlib import md5
 from os import urandom
 from random import shuffle, choice
-from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Sequence, Dict, Union, Iterable,
-                    get_origin)
+from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Sequence, Dict, Iterable,
+                    get_origin, TYPE_CHECKING, NewType)
 from uuid import UUID, uuid4
-
-from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from game_server.config import (MIN_THINK_TIME, MAX_THINK_TIME, MAX_BLANK_CARDS, MAX_PLAYER_LIMIT, MAX_POINT_LIMIT,
                                 DISCONNECTED_KICK_TIMER, HAND_SIZE, MAX_PASSWORD_LENGTH, MIN_ROUND_END_TIME,
                                 MAX_ROUND_END_TIME, MIN_IDLE_ROUNDS, MAX_IDLE_ROUNDS, DEFAULT_THINK_TIME,
                                 DEFAULT_ROUND_END_TIME, DEFAULT_PASSWORD, DEFAULT_POINT_LIMIT, DEFAULT_PLAYER_LIMIT,
-                                DEFAULT_BLANK_CARDS, DEFAULT_IDLE_ROUNDS, DISCONNECTED_REMOVE_TIMER)
+                                DEFAULT_BLANK_CARDS, DEFAULT_IDLE_ROUNDS, DISCONNECTED_REMOVE_TIMER,
+                                MAX_GAME_TITLE_LENGTH)
 from game_server.exceptions import InvalidGameState
 from game_server.utils import SearchableList, CallbackTimer
 
+if TYPE_CHECKING:
+    from game_server.consumer import GameConsumer
+
 CardT = TypeVar("CardT")
+
+UserID = NewType("UserID", UUID)
+WhiteCardID = NewType("WhiteCardID", UUID)
+CardPackID = NewType("CardPackID", UUID)
+RoundID = NewType("RoundID", UUID)
 
 
 class LeaveReason(Enum):
@@ -46,8 +53,69 @@ class UpdateType(Enum):
     options = auto()
 
 
+@dataclass(frozen=True)
+class BlackCard:
+    text: str
+    pick_count: int
+    draw_count: int
+
+    def to_json(self) -> dict:
+        return {
+            "text": self.text,
+            "pick_count": self.pick_count,
+            "draw_count": self.draw_count
+        }
+
+
+@dataclass(frozen=True)
+class WhiteCard:
+    """A white card contains an answer to a black card.
+
+    ``slot_id`` does not uniquely identify a white card; instead, it uniquely identifies a "physical card". This makes
+    a difference for blank cards, where the card can be written onto while keeping the same ``slot_id``. For non-blank
+    cards, ``slot_id`` is unique inside a deck.
+    """
+    slot_id: WhiteCardID
+    text: Optional[str]
+    blank: bool = False
+
+    @classmethod
+    def new_blank(cls) -> WhiteCard:
+        return cls(WhiteCardID(uuid4()), None, True)
+
+    def write_blank(self, text: str) -> WhiteCard:
+        if not self.blank:
+            raise InvalidGameState("invalid_white_cards", "card is not a blank")
+        return WhiteCard(self.slot_id, text, True)
+
+    def to_json(self) -> dict:
+        return {
+            "id": str(self.slot_id),
+            "text": self.text,
+            "blank": self.blank
+        }
+
+
+@dataclass(frozen=True)
+class CardPack:
+    id: CardPackID
+    name: str
+    black_cards: FrozenSet[BlackCard, ...]
+    white_cards: FrozenSet[WhiteCard, ...]
+
+    def to_json(self):
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "black_cards": len(self.black_cards),
+            "white_cards": len(self.white_cards)
+        }
+
+
 @dataclass
 class GameOptions:
+    game_title: str = field(default="", metadata={"max_length": MAX_GAME_TITLE_LENGTH})
+    public: bool = field(default=False)
     think_time: int = field(default=DEFAULT_THINK_TIME, metadata={"min": MIN_THINK_TIME, "max": MAX_THINK_TIME})
     round_end_time: int = field(default=DEFAULT_ROUND_END_TIME,
                                 metadata={"min": MIN_ROUND_END_TIME, "max": MAX_ROUND_END_TIME})
@@ -95,25 +163,29 @@ class GameOptions:
         }
 
 
-@dataclass
 class User:
-    id: UUID = field(default_factory=uuid4, init=False)
-    token: str = field(default_factory=lambda: b64encode(urandom(24)), init=False)
+    id: UserID
+    token: str
     name: str
     server: GameServer
-    game: Optional[Game] = field(default=None, init=False, repr=False)
-    player: Optional[Player] = field(default=None, init=False, repr=False)
+    game: Optional[Game] = None
+    player: Optional[Player] = None
 
-    connection: Optional[AsyncJsonWebsocketConsumer] = field(default=None, repr=False)
+    connection: Optional[GameConsumer] = None
     # TODO: do we need a different timer for kick and user delete? probably not
-    _disconnect_kick_timer: CallbackTimer = field(default_factory=CallbackTimer, init=False, repr=False)
-    _disconnect_remove_timer: CallbackTimer = field(default_factory=CallbackTimer, init=False, repr=False)
+    _disconnect_kick_timer: CallbackTimer
+    _disconnect_remove_timer: CallbackTimer
 
-    def __hash__(self):
-        return hash(self.id)
+    def __init__(self, name: str, server: GameServer):
+        self.id = UserID(uuid4())
+        self.token = b64encode(urandom(24))
+        self.name = name
+        self.server = server
+        self._disconnect_kick_timer = CallbackTimer()
+        self._disconnect_remove_timer = CallbackTimer()
 
-    def __eq__(self, other):
-        return isinstance(other, User) and self.id == other.id
+    def __str__(self):
+        return f"{self.name} [{self.id}]"
 
     def disconnected(self):
         self.connection = None
@@ -121,29 +193,27 @@ class User:
         if self.game:
             self._disconnect_kick_timer.start(DISCONNECTED_KICK_TIMER, self._kick_if_disconnected)
 
-    def reconnected(self, connection: AsyncJsonWebsocketConsumer):
+    def reconnected(self, connection: GameConsumer):
         self.connection = connection
         self._disconnect_kick_timer.cancel()
         self._disconnect_remove_timer.cancel()
 
     def added_to_game(self, game: Game, player: Player):
-        if self.game:
-            raise InvalidGameState("user already in game")
+        assert self.game, "user already in game"
         if not self.connection:
-            raise InvalidGameState("user not connected")
+            raise InvalidGameState("user_not_connected", "user not connected")
         self.game = game
         self.player = player
 
     def removed_from_game(self):
-        if not self.game:
-            raise InvalidGameState("player not in game")
+        assert self.game, "user not in game"
         self.game = None
         self.player = None
         self._disconnect_kick_timer.cancel()
 
     def _kick_if_disconnected(self):
-        if self.game and not self.connection:
-            self.game.remove_player(self.player, LeaveReason.disconnect)
+        assert self.game and not self.connection
+        self.game.remove_player(self.player, LeaveReason.disconnect)
 
     def _remove_if_disconnected(self):
         assert not self.connection
@@ -154,61 +224,13 @@ class User:
             self.connection.queue.put_nowait(message)
 
 
-@dataclass(frozen=True)
-class BlackCard:
-    text: str
-    pick_count: int
-    draw_count: int
-
-    def to_json(self) -> dict:
-        return {
-            "text": self.text,
-            "pick_count": self.pick_count,
-            "draw_count": self.draw_count
-        }
-
-
-@dataclass(frozen=True)
-class WhiteCard:
-    """A white card contains an answer to a black card.
-
-    ``slot_id`` does not uniquely identify a white card; instead, it uniquely identifies a "physical card". This makes
-    a difference for blank cards, where the card can be written onto while keeping the same ``slot_id``. For non-blank
-    cards, ``slot_id`` is unique inside a deck.
-    """
-    slot_id: UUID
-    text: Optional[str]
-    blank: bool = False
-
-    @classmethod
-    def new_blank(cls) -> WhiteCard:
-        return cls(uuid4(), None, True)
-
-    def write_blank(self, text: str) -> WhiteCard:
-        if not self.blank:
-            raise InvalidGameState("card is not a blank")
-        return WhiteCard(self.slot_id, text, True)
-
-    def to_json(self) -> dict:
-        return {
-            "id": str(self.slot_id),
-            "text": self.text,
-            "blank": self.blank
-        }
-
-
-@dataclass(frozen=True)
-class CardPack:
-    id: UUID
-    name: str
-    black_cards: FrozenSet[BlackCard, ...]
-    white_cards: FrozenSet[WhiteCard, ...]
-
-
-@dataclass
 class Deck(Generic[CardT]):
-    _deck: List[CardT] = field(default_factory=list)
-    _discarded: Set[CardT] = field(default_factory=set)
+    _deck: List[CardT]
+    _discarded: Set[CardT]
+
+    def __init__(self):
+        self._deck = []
+        self._discarded = set()
 
     @classmethod
     def build_white(cls, packs: Sequence[CardPack], blanks: int) -> Deck[WhiteCard]:
@@ -272,9 +294,9 @@ class Deck(Generic[CardT]):
 class Round:
     card_czar: Player
     black_card: BlackCard
-    white_cards: Dict[UUID, Sequence[WhiteCard]] = field(default_factory=dict)
+    white_cards: Dict[UserID, Sequence[WhiteCard]] = field(default_factory=dict)
     winner: Optional[Player] = None
-    id: UUID = field(default_factory=uuid4)
+    id: RoundID = field(default_factory=lambda: RoundID(uuid4()))
     order_key: bytes = field(default_factory=lambda: urandom(16), init=False)
 
     def needs_to_play(self, player: Player) -> bool:
@@ -317,7 +339,7 @@ class Player:
             if hand_card.slot_id == card.slot_id:
                 self.hand.remove(hand_card)
                 return
-        raise InvalidGameState("player does not have the card")
+        raise InvalidGameState("card_not_in_hand", "you do not have the card")
 
 
 @dataclass(repr=False)
@@ -326,7 +348,7 @@ class Game:
     options: GameOptions
 
     rounds: List[Round] = field(default_factory=list, init=False)
-    players: List[Player] = field(default_factory=list, init=False)
+    players: SearchableList[Player] = field(default_factory=lambda: SearchableList(id=True), init=False)
     state: GameState = field(default=GameState.not_started, init=False)
 
     black_deck: Deck[BlackCard] = field(init=False)
@@ -346,16 +368,6 @@ class Game:
         self.black_deck = Deck.build_black(self.options.card_packs)
         self.white_deck = Deck.build_white(self.options.card_packs, self.options.blank_cards)
 
-    def player_by_id(self, id_: UUID) -> Player:
-        """Get the player with the given ``id``.
-
-        :raises KeyError: if the player does not exist.
-        """
-        for player in self.players:
-            if player.id == id_:
-                return player
-        raise KeyError("player not found")
-
     @property
     def current_round(self) -> Optional[Round]:
         """Get the current round, or ``None`` if the game is not ongoing."""
@@ -373,11 +385,11 @@ class Game:
 
     def add_player(self, user: User):
         if user.game is not None:
-            raise InvalidGameState("user already in game")
+            raise InvalidGameState("user_in_game", "user already in game")
         # check that there are enough white cards to distribute
         total_cards_available = self.white_deck.total_cards() + sum(len(player.hand) for player in self.players)
         if total_cards_available < (HAND_SIZE + 2) * (len(self.players) + 1):
-            raise InvalidGameState("too few white cards")
+            raise InvalidGameState("too_few_white_cards", "too few white cards in game for this many players")
         # create the user
         player = Player(user)
         self.players.append(player)
@@ -388,7 +400,7 @@ class Game:
 
     def remove_player(self, player: Player, reason: LeaveReason):
         if player not in self.players:
-            raise InvalidGameState("player not in game")
+            raise InvalidGameState("user_not_in_game", "user not in game")
         self.send_event({
             "type": "player_leave",
             "player": player.user.id,
@@ -400,8 +412,7 @@ class Game:
         if len(self.players) <= 1:
             self.server.remove_game(self)
             return
-        # don't send any updates, just events
-        player.pending_updates.clear()
+        # send updates to the player now to ensure they get notified
         self._send_pending_updates(to=player)
         # remove the player now so they won't get further messages
         self.players.remove(player)
@@ -453,14 +464,14 @@ class Game:
         if self.state == GameState.game_ended:
             self.stop_game()
         if self.state != GameState.not_started:
-            raise InvalidGameState("game is already ongoing")
+            raise InvalidGameState("game_already_started", "game is already ongoing")
         # ensure that there are enough players and enough cards to play
         if len(self.players) < 3:
-            raise InvalidGameState("too few players")
+            raise InvalidGameState("too_few_players", "too few players")
         if self.black_deck.total_cards() == 0:
-            raise InvalidGameState("no black cards")
+            raise InvalidGameState("too_few_black_cards", "no black cards in selected packs")
         if self.white_deck.total_cards() < (HAND_SIZE + 2) * len(self.players):
-            raise InvalidGameState("too few white cards")
+            raise InvalidGameState("too_few_white_cards", "too few white cards in selected packs for this many players")
         # start the game
         self._start_next_round()
 
@@ -479,8 +490,7 @@ class Game:
         self.send_updates(UpdateType.game, UpdateType.hand, UpdateType.players)
 
     def _start_next_round(self):
-        if self.state in (GameState.playing, GameState.judging):
-            raise InvalidGameState("round is already ongoing")
+        assert self.state in (GameState.not_started, GameState.round_ended)
         # find a card czar
         for round_ in reversed(self.rounds):
             if round_.card_czar in self.players:
@@ -527,17 +537,17 @@ class Game:
         else:
             self._set_state(GameState.judging)
 
-    def play_cards(self, player: Player, cards: Sequence[WhiteCard]):
-        if self.state != GameState.playing:
-            raise InvalidGameState("game is not in playing state")
+    def play_white_cards(self, player: Player, cards: Sequence[WhiteCard], for_round: RoundID):
+        if self.state != GameState.playing or self.current_round.id != for_round:
+            raise InvalidGameState("invalid_round_state", "white cards are not being played for the round")
         if player.id in self.current_round.white_cards:
-            raise InvalidGameState("player has already played for the round")
+            raise InvalidGameState("already_played", "you have already played white cards for the round")
         if len(set(card.slot_id for card in cards)) != len(cards):
-            raise InvalidGameState("duplicates in cards")
-        if not all(player.can_play_card(card) for card in cards):
-            raise InvalidGameState("player does not have the cards")
+            raise InvalidGameState("invalid_white_cards", "duplicate cards chosen")
         if len(cards) != self.current_round.black_card.pick_count:
-            raise InvalidGameState("wrong number of cards chosen")
+            raise InvalidGameState("invalid_white_cards", "wrong number of cards chosen")
+        if not all(player.can_play_card(card) for card in cards):
+            raise InvalidGameState("card_not_in_hand", "you do not have the cards")
         # play the cards from the hand
         for card in cards:
             player.play_card(card)
@@ -564,11 +574,16 @@ class Game:
         if self.card_czar.idle_rounds >= self.options.idle_rounds:
             self.remove_player(self.card_czar, LeaveReason.idle)
 
-    def choose_winner(self, winner: Player):
-        if self.state != GameState.judging:
-            raise InvalidGameState("game is not in judging state")
-        if not self.current_round.has_played(winner):
-            raise InvalidGameState("player did not play valid white cards")
+    def choose_winner(self, winning_card: WhiteCardID, for_round: RoundID):
+        if self.state != GameState.judging or self.current_round.id != for_round:
+            raise InvalidGameState("invalid_round_state", "the winner is not being chosen for the round")
+        # figure out the winner from the winning card
+        try:
+            winner_id = next(player for player, cards in self.current_round.white_cards.items()
+                             if cards[0].slot_id == winning_card)
+        except StopIteration:
+            raise InvalidGameState("invalid_winner", "no such card played")
+        winner = self.players.find_by("id", winner_id)
         self.card_czar.idle_rounds = 0
         # count the score and start the next round
         self.current_round.winner = winner
@@ -585,11 +600,10 @@ class Game:
         self._start_next_round()
 
     def _cancel_round(self):
-        if self.state not in (GameState.playing, GameState.judging):
-            raise ValueError("game is not in playing or judging state")
+        assert self.state in (GameState.playing, GameState.judging)
         # return white cards to hands
         for player_id, cards in self.current_round.white_cards:
-            self.player_by_id(player_id).hand.extend(cards)
+            self.players.find_by("id", player_id).hand.extend(cards)
         # start the next round
         self._set_state(GameState.round_ended)
         # sync state to players
@@ -598,12 +612,12 @@ class Game:
     def _resolve_send_to(self, to: Optional[Player]):
         return self.players if to is None else [to]
 
-    def send_updates(self, *kinds: UpdateType, to: Union[Player, Sequence[Player], None] = None):
+    def send_updates(self, *kinds: UpdateType, to: Optional[Player] = None):
         for player in self._resolve_send_to(to):
             player.pending_updates.update(kinds)
         self._send_pending_updates_later()
 
-    def send_event(self, event: dict, to: Union[Player, Sequence[Player], None] = None):
+    def send_event(self, event: dict, to: Optional[Player] = None):
         for player in self._resolve_send_to(to):
             player.pending_events.append(event)
         self._send_pending_updates_later()
@@ -616,32 +630,38 @@ class Game:
         self.update_handle = None
         for player in self._resolve_send_to(to):
             to_send = {}
-            if UpdateType.hand in player.pending_updates:
-                to_send["hand"] = [card.to_json() for card in player.hand]
-            if UpdateType.game in player.pending_updates:
-                white_cards = None
-                if self.state == GameState.judging:
-                    played_cards = self.current_round.randomize_white_cards()
-                    white_cards = [[card.to_json() for card in play_set] for play_set in played_cards]
-                to_send["game"] = {
-                    "state": self.state.name,
-                    "current_round": {
-                        "id": self.current_round.id,
-                        "black_card": self.current_round.black_card.to_json(),
-                        "white_cards": white_cards,
-                        "card_czar": self.current_round.card_czar.id,
-                        "winner": self.current_round.winner.id if self.current_round.winner else None
-                    } if self.current_round else None
-                }
-            if UpdateType.players in player.pending_updates:
-                to_send["players"] = [{
-                    "id": str(player.id),
-                    "name": player.user.name,
-                    "score": player.score,
-                    "played": self.state == GameState.playing and self.rounds[-1].white_cards
-                } for player in self.players]
-            if UpdateType.options in player.pending_updates:
-                to_send["options"] = self.options.to_json()
+            # if the player was removed, just tell them that and move on
+            if to and to not in self.players:
+                to_send["game"] = None
+            else:
+                # otherwise, send them the updates that are pending
+                if UpdateType.hand in player.pending_updates:
+                    to_send["hand"] = [card.to_json() for card in player.hand]
+                if UpdateType.game in player.pending_updates:
+                    white_cards = None
+                    if self.state == GameState.judging:
+                        played_cards = self.current_round.randomize_white_cards()
+                        white_cards = [[card.to_json() for card in play_set] for play_set in played_cards]
+                    to_send["game"] = {
+                        "state": self.state.name,
+                        "current_round": {
+                            "id": self.current_round.id,
+                            "black_card": self.current_round.black_card.to_json(),
+                            "white_cards": white_cards,
+                            "card_czar": self.current_round.card_czar.id,
+                            "winner": self.current_round.winner.id if self.current_round.winner else None
+                        } if self.current_round else None
+                    }
+                if UpdateType.players in player.pending_updates:
+                    to_send["players"] = [{
+                        "id": str(player.id),
+                        "name": player.user.name,
+                        "score": player.score,
+                        "played": self.state == GameState.playing and self.rounds[-1].white_cards
+                    } for player in self.players]
+                if UpdateType.options in player.pending_updates:
+                    to_send["options"] = self.options.to_json()
+            # always send pending events
             if player.pending_events:
                 to_send["events"] = player.pending_events
             player.pending_updates.clear()
@@ -650,12 +670,13 @@ class Game:
                 player.user.send_message(to_send)
 
 
-@dataclass
 class GameServer:
-    games: List[Game] = field(default_factory=list, init=False)
-    users: SearchableList[User] = field(
-        default_factory=lambda: SearchableList(id=True, name=lambda user: user.name.lower()),
-        init=False)
+    games: List[Game]
+    users: SearchableList[User]
+
+    def __init__(self):
+        self.games = []
+        self.users = SearchableList(id=True, name=lambda user: user.name.lower())
 
     def add_user(self, user: User):
         self.users.append(user)
@@ -664,6 +685,9 @@ class GameServer:
         if user.game:
             user.game.remove_player(user.player, reason)
         self.users.remove(user)
+
+    def add_game(self, game: Game):
+        self.games.append(game)
 
     def remove_game(self, game: Game):
         self.games.remove(game)
