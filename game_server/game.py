@@ -12,12 +12,15 @@ from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Seq
                     Coroutine, get_origin)
 from uuid import UUID, uuid4
 
-from pyxyzzy.config import (MIN_THINK_TIME, MAX_THINK_TIME, MAX_BLANK_CARDS, MAX_PLAYER_LIMIT, MAX_POINT_LIMIT,
-                            DISCONNECTED_KICK_TIMER, HAND_SIZE, MAX_PASSWORD_LENGTH, MIN_ROUND_END_TIME,
-                            MAX_ROUND_END_TIME, MIN_IDLE_ROUNDS, MAX_IDLE_ROUNDS, DEFAULT_THINK_TIME,
-                            DEFAULT_ROUND_END_TIME, DEFAULT_PASSWORD, DEFAULT_POINT_LIMIT, DEFAULT_PLAYER_LIMIT,
-                            DEFAULT_BLANK_CARDS, DEFAULT_IDLE_ROUNDS)
-from pyxyzzy.exceptions import InvalidGameState
+from channels.generic.websocket import AsyncJsonWebsocketConsumer
+
+from game_server.config import (MIN_THINK_TIME, MAX_THINK_TIME, MAX_BLANK_CARDS, MAX_PLAYER_LIMIT, MAX_POINT_LIMIT,
+                                DISCONNECTED_KICK_TIMER, HAND_SIZE, MAX_PASSWORD_LENGTH, MIN_ROUND_END_TIME,
+                                MAX_ROUND_END_TIME, MIN_IDLE_ROUNDS, MAX_IDLE_ROUNDS, DEFAULT_THINK_TIME,
+                                DEFAULT_ROUND_END_TIME, DEFAULT_PASSWORD, DEFAULT_POINT_LIMIT, DEFAULT_PLAYER_LIMIT,
+                                DEFAULT_BLANK_CARDS, DEFAULT_IDLE_ROUNDS, DISCONNECTED_REMOVE_TIMER)
+from game_server.exceptions import InvalidGameState
+from game_server.utils import SearchableList, CallbackTimer
 
 CardT = TypeVar("CardT")
 
@@ -41,6 +44,7 @@ class UpdateType(Enum):
     game = auto()
     players = auto()
     hand = auto()
+    options = auto()
 
 
 @dataclass
@@ -75,18 +79,36 @@ class GameOptions:
 
         object.__setattr__(self, key, value)
 
+    def to_json(self):
+        return {
+            "think_time": self.think_time,
+            "round_end_time": self.round_end_time,
+            "idle_rounds": self.idle_rounds,
+            "blank_cards": self.blank_cards,
+            "player_limit": self.player_limit,
+            "password": self.password,
+            "card_packs": [{
+                "id": str(pack.id),
+                "name": pack.name,
+                "white_cards": len(pack.white_cards),
+                "black_cards": len(pack.black_cards)
+            } for pack in self.card_packs]
+        }
+
 
 @dataclass
 class User:
-    session: Optional[Any] = field(default=None, init=False, repr=False)
-    last_connected: float = field(default_factory=time.monotonic, init=False, repr=False)
-    dc_timer: Optional[Task] = field(default=None, init=False, repr=False)
-
     id: UUID = field(default_factory=uuid4, init=False)
     token: str = field(default_factory=lambda: b64encode(urandom(24)), init=False)
     name: str
+    server: GameServer
     game: Optional[Game] = field(default=None, init=False, repr=False)
     player: Optional[Player] = field(default=None, init=False, repr=False)
+
+    connection: Optional[AsyncJsonWebsocketConsumer] = field(default=None, repr=False)
+    # TODO: do we need a different timer for kick and user delete? probably not
+    _disconnect_kick_timer: CallbackTimer = field(default_factory=CallbackTimer, init=False, repr=False)
+    _disconnect_remove_timer: CallbackTimer = field(default_factory=CallbackTimer, init=False, repr=False)
 
     def __hash__(self):
         return hash(self.id)
@@ -95,38 +117,42 @@ class User:
         return isinstance(other, User) and self.id == other.id
 
     def disconnected(self):
-        self.session = None
-        if self.game is not None:
-            self.dc_timer = create_task(self._kick_if_disconnected())
+        self.connection = None
+        self._disconnect_remove_timer.start(DISCONNECTED_REMOVE_TIMER, self._remove_if_disconnected)
+        if self.game:
+            self._disconnect_kick_timer.start(DISCONNECTED_KICK_TIMER, self._kick_if_disconnected)
 
-    def reconnected(self, session):
-        self.session = session
-        self.last_connected = time.monotonic()
-        self._cancel_dc_timer()
+    def reconnected(self, connection: AsyncJsonWebsocketConsumer):
+        self.connection = connection
+        self._disconnect_kick_timer.cancel()
+        self._disconnect_remove_timer.cancel()
 
     def added_to_game(self, game: Game, player: Player):
-        if self.game is not None:
-            raise ValueError("user already in game")
+        if self.game:
+            raise InvalidGameState("user already in game")
+        if not self.connection:
+            raise InvalidGameState("user not connected")
         self.game = game
         self.player = player
 
     def removed_from_game(self):
-        if self.game is None:
-            raise ValueError("player not in game")
+        if not self.game:
+            raise InvalidGameState("player not in game")
         self.game = None
         self.player = None
-        self._cancel_dc_timer()
+        self._disconnect_kick_timer.cancel()
 
-    async def _kick_if_disconnected(self):
-        self.dc_timer = None
-        await sleep(DISCONNECTED_KICK_TIMER)
-        if self.session is None and self.game is not None:
+    def _kick_if_disconnected(self):
+        if self.game and not self.connection:
             self.game.remove_player(self.player, LeaveReason.disconnect)
 
-    def _cancel_dc_timer(self):
-        if self.dc_timer:
-            self.dc_timer.cancel()
-            self.dc_timer = None
+    def _remove_if_disconnected(self):
+        assert not self.connection
+        self.server.remove_user(self, LeaveReason.disconnect)
+
+    def send_message(self, message: dict):
+        if self.connection:
+            self.connection.queue.put_nowait(message)
 
 
 @dataclass(frozen=True)
@@ -174,6 +200,8 @@ class WhiteCard:
 
 @dataclass(frozen=True)
 class CardPack:
+    id: UUID
+    name: str
     black_cards: FrozenSet[BlackCard, ...]
     white_cards: FrozenSet[WhiteCard, ...]
 
@@ -356,7 +384,7 @@ class Game:
         self.players.append(player)
         user.added_to_game(self, player)
         # sync state to players
-        self.send_updates(UpdateType.game, UpdateType.players, UpdateType.hand, to=player)
+        self.send_updates(UpdateType.game, UpdateType.players, UpdateType.hand, UpdateType.options, to=player)
         self.send_updates(UpdateType.players)
 
     def remove_player(self, player: Player, reason: LeaveReason):
@@ -619,30 +647,30 @@ class Game:
                     "score": player.score,
                     "played": self.state == GameState.playing and self.rounds[-1].white_cards
                 } for player in self.players]
+            if UpdateType.options in player.pending_updates:
+                to_send["options"] = self.options.to_json()
             if player.pending_events:
                 to_send["events"] = player.pending_events
             player.pending_updates.clear()
             player.pending_events.clear()
             if to_send:
-                pass  # TODO async send via user.session
+                player.user.send_message(to_send)
 
 
+@dataclass
 class GameServer:
-    games: List[Game]
-    users_by_id: Dict[UUID, User]
-    users_by_name: Dict[str, User]
+    games: List[Game] = field(default_factory=list, init=False)
+    users: SearchableList[User] = field(
+        default_factory=lambda: SearchableList(id=True, name=lambda user: user.name.lower()),
+        init=False)
 
     def add_user(self, user: User):
-        if user.id in self.users_by_id:
-            raise ValueError("user with id already exists")
-        if user.name.lower() in self.users_by_name:
-            raise ValueError("user with name already exists")
-        self.users_by_id[user.id] = user
-        self.users_by_name[user.name.lower()] = user
+        self.users.append(user)
 
-    def remove_user(self, user: User):
-        del self.users_by_id[user.id]
-        del self.users_by_name[user.name.lower()]
+    def remove_user(self, user: User, reason: LeaveReason):
+        if user.game:
+            user.game.remove_player(user.player, reason)
+        self.users.remove(user)
 
     def remove_game(self, game: Game):
-        pass  # TODO
+        self.games.remove(game)

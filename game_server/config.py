@@ -23,7 +23,8 @@ DEFAULT_PASSWORD = ""
 MAX_PASSWORD_LENGTH = 100
 
 DISCONNECTED_KICK_TIMER = 120
+DISCONNECTED_REMOVE_TIMER = 600
 
 HAND_SIZE = 10
 
-NAME_REGEX = r"^(?!.*(?:^ |  | $))[a-zA-Z0-9_- ]{3,32}$"
+NAME_REGEX = r"^(?!.*(?:^ |  | $))[a-zA-Z0-9_\- ]{3,32}$"
