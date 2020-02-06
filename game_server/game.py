@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import time
-from asyncio import Task, create_task, sleep, get_event_loop, Handle
+from asyncio import get_event_loop, Handle
 from base64 import b64encode
 from dataclasses import dataclass, field, InitVar
 from enum import Enum, auto
 from hashlib import md5
 from os import urandom
 from random import shuffle, choice
-from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Sequence, Dict, Any, Union, Iterable,
-                    Coroutine, get_origin)
+from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Sequence, Dict, Union, Iterable,
+                    get_origin)
 from uuid import UUID, uuid4
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -333,7 +332,7 @@ class Game:
     black_deck: Deck[BlackCard] = field(init=False)
     white_deck: Deck[WhiteCard] = field(init=False)
 
-    round_timer: Optional[Task] = field(default=None, init=False)
+    _round_timer: CallbackTimer = field(default_factory=CallbackTimer, init=False)
 
     update_handle: Optional[Handle] = field(default=None, init=False)
 
@@ -433,6 +432,21 @@ class Game:
         # sync state to players
         self.send_updates(UpdateType.players)
 
+    def _set_state(self, state: GameState):
+        """Sets the game state, starts the appropriate timer and sends state updates."""
+        self.state = state
+        if state in (GameState.not_started, GameState.game_ended):
+            self._round_timer.cancel()
+        elif state == GameState.playing:
+            self._round_timer.start(self.options.think_time, self._play_idle_timer)
+        elif state == GameState.judging:
+            self._round_timer.start(self.options.think_time, self._judge_idle_timer)
+        elif state == GameState.round_ended:
+            self._round_timer.start(self.options.round_end_time, self._round_end_timer)
+        else:
+            raise ValueError("invalid state")
+        self.send_updates(UpdateType.game)
+
     def start_game(self):
         """Start the game, resetting it if it has ended."""
         # reset the game if one has already been played
@@ -453,8 +467,7 @@ class Game:
     def stop_game(self):
         """Stop and reset the game."""
         # TODO data needs to be preserved here if we want to persist game results
-        self._cancel_round_timer()
-        self.state = GameState.not_started
+        self._set_state(GameState.not_started)
         for player in self.players:
             player.hand.clear()
             player.score = 0
@@ -487,12 +500,11 @@ class Game:
             while len(player.hand) < target_cards:
                 player.hand.append(self.white_deck.draw())
         # start idle timer
-        self._set_round_timer(self._play_idle_timer())
+        self._set_state(GameState.playing)
         # sync state to players
         self.send_updates(UpdateType.game, UpdateType.hand, UpdateType.players)
 
-    async def _play_idle_timer(self):
-        await sleep(self.options.think_time)
+    def _play_idle_timer(self):
         assert self.state == GameState.playing
         to_kick = []
         for player in self.players:
@@ -513,7 +525,7 @@ class Game:
             })
             self._cancel_round()
         else:
-            self._start_judging()
+            self._set_state(GameState.judging)
 
     def play_cards(self, player: Player, cards: Sequence[WhiteCard]):
         if self.state != GameState.playing:
@@ -541,15 +553,9 @@ class Game:
         if self.state != GameState.playing:
             return
         if not any(self.current_round.needs_to_play(player) for player in self.players):
-            self._start_judging()
+            self._set_state(GameState.judging)
 
-    def _start_judging(self):
-        self.state = GameState.judging
-        self._set_round_timer(self._judge_idle_timer())
-        self.send_updates(UpdateType.game)
-
-    async def _judge_idle_timer(self):
-        await sleep(self.options.think_time)
+    def _judge_idle_timer(self):
         assert self.state == GameState.judging
         # card czar idle, cancel round
         self._cancel_round()
@@ -568,16 +574,13 @@ class Game:
         self.current_round.winner = winner
         winner.score += 1
         if winner.score == self.options.point_limit:
-            self.state = GameState.game_ended
-            self._cancel_round_timer()
+            self._set_state(GameState.game_ended)
         else:
-            self.state = GameState.round_ended
-            self._set_round_timer(self._round_end_timer())
+            self._set_state(GameState.round_ended)
         # sync state to players
         self.send_updates(UpdateType.game, UpdateType.players)
 
-    async def _round_end_timer(self):
-        await sleep(self.options.round_end_time)
+    def _round_end_timer(self):
         assert self.state == GameState.round_ended
         self._start_next_round()
 
@@ -588,19 +591,9 @@ class Game:
         for player_id, cards in self.current_round.white_cards:
             self.player_by_id(player_id).hand.extend(cards)
         # start the next round
-        self.state = GameState.round_ended
-        self._set_round_timer(self._round_end_timer())
+        self._set_state(GameState.round_ended)
         # sync state to players
         self.send_updates(UpdateType.game, UpdateType.hand)
-
-    def _set_round_timer(self, coro: Coroutine):
-        self._cancel_round_timer()
-        self.round_timer = create_task(coro)
-
-    def _cancel_round_timer(self):
-        if self.round_timer:
-            self.round_timer.cancel()
-            self.round_timer = None
 
     def _resolve_send_to(self, to: Optional[Player]):
         return self.players if to is None else [to]
