@@ -8,7 +8,8 @@ class GameError(Exception):
 
 
 class InvalidRequest(GameError):
-    pass
+    def __init__(self, description: str):
+        super().__init__("invalid_request", description)
 
 
 class InvalidGameState(GameError):

@@ -1,5 +1,4 @@
 from asyncio import Task, create_task, sleep
-from dataclasses import dataclass, field
 from typing import MutableSequence, TypeVar, Union, List, Dict, Hashable, Iterable, Any, Callable, Tuple, Optional
 
 T = TypeVar("T")
@@ -154,3 +153,16 @@ class CallbackTimer:
 
     def is_running(self) -> bool:
         return self.__task is not None
+
+
+def single(iterable: Iterable[T]) -> T:
+    it = iter(iterable)
+    try:
+        value = next(it)
+    except StopIteration:
+        raise ValueError("expected a single value from iterator, got none")
+    try:
+        next(it)
+        raise ValueError("expected a single value from iterator, got more")
+    except StopIteration:
+        return value
