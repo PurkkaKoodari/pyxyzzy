@@ -4,7 +4,7 @@ import re
 from asyncio import Queue
 from functools import wraps
 from logging import getLogger
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Callable
 from uuid import UUID
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -12,6 +12,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from game_server.config import NAME_REGEX
 from game_server.exceptions import InvalidRequest, GameError, InvalidGameState
 from game_server.game import User, GameServer, UpdateType, Game, LeaveReason, WhiteCardID, UserID
+from game_server.utils import FunctionRegistry
 
 LOGGER = getLogger("pyXyzzy")
 
@@ -21,6 +22,7 @@ def require_not_ingame(method):
     def _wrapped(self: GameConsumer, content: dict):
         if self.user.game:
             raise InvalidGameState("user_in_game", "user already in game")
+        return method(self, content)
 
     return _wrapped
 
@@ -30,6 +32,7 @@ def require_ingame(method):
     def _wrapped(self: GameConsumer, content: dict):
         if not self.user.game:
             raise InvalidGameState("user_not_in_game", "user not in game")
+        return method(self, content)
 
     return _wrapped
 
@@ -57,6 +60,7 @@ def require_host(method):
 
 
 class GameConsumer(AsyncJsonWebsocketConsumer):
+    handlers: FunctionRegistry[str, Callable[[GameConsumer, dict], Optional[dict]]] = FunctionRegistry()
 
     user: Optional[User] = None
     server: GameServer
@@ -71,16 +75,21 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
         if not isinstance(action, str) or not isinstance(call_id, (str, int, float)):
             raise ValueError("action or call_id missing or invalid")
 
-        if not self.user and action != "authenticate":
-            raise ValueError("first call must be authenticate")
+        # noinspection PyBroadException
         try:
+            if not self.user and action != "authenticate":
+                raise InvalidRequest("first call must be authenticate")
+            try:
+                handler = self.handlers[action]
+            except KeyError:
+                raise InvalidRequest("invalid action")
 
+            call_result = handler(self, content) or {}
             result = {
                 "call": call_id,
-                "error": None
+                "error": None,
+                **call_result
             }
-            result.update(self._handle_authenticate(content))
-
             self.queue.put_nowait(result)
         except GameError as ex:
             self.queue.put_nowait({
@@ -89,14 +98,17 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
                 "description": ex.description
             })
         except Exception:
-            LOGGER.error("Internal uncaught exception.", exc_info=True)
+            LOGGER.error("Internal uncaught exception in WebSocket handler.", exc_info=True)
             self.queue.put_nowait({
                 "call": call_id,
                 "error": "internal_error",
                 "description": None
             })
 
+    @handlers.register("authenticate")
     def _handle_authenticate(self, content: dict):
+        if self.user:
+            raise InvalidRequest("already authenticated")
         if "id" in content and "token" in content:
             try:
                 user = self.server.users.find_by("id", UUID(hex=content["id"]))
@@ -127,20 +139,24 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
                                    to=user.player)
         return result
 
+    @handlers.register("create_game")
     @require_not_ingame
-    def _handle_create_game(self, content: dict):
+    def _handle_create_game(self, _: dict):
         game = Game(self.server)
         game.add_player(self.user)
         self.server.add_game(game)
 
+    @handlers.register("join_game")
     @require_not_ingame
     def _handle_join_game(self, content: dict):
         pass  # TODO implement game join
 
+    @handlers.register("leave_game")
     @require_ingame
-    def _handle_leave_game(self, content: dict):
+    def _handle_leave_game(self, _: dict):
         self.user.game.remove_player(self.user.player, LeaveReason.leave)
 
+    @handlers.register("kick_player")
     @require_host
     def _handle_kick_player(self, content: dict):
         try:
@@ -157,18 +173,22 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
 
         self.user.game.remove_player(player, LeaveReason.host_kick)
 
+    @handlers.register("game_options")
     @require_host
     def _handle_game_options(self, content: dict):
         pass  # TODO implement options changing
 
+    @handlers.register("start_game")
     @require_host
     def _handle_start_game(self, content: dict):
         pass  # TODO implement game start
 
+    @handlers.register("stop_game")
     @require_host
     def _handle_stop_game(self, content: dict):
         pass  # TODO implement game stop
 
+    @handlers.register("play_white")
     @require_ingame
     def _handle_play_white(self, content: dict):
         cards: List[Tuple[WhiteCardID, Optional[str]]] = []
@@ -185,6 +205,7 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
 
         self.user.game.play_white_cards(self.user.player, cards)
 
+    @handlers.register("choose_winner")
     @require_czar
     def _handle_choose_winner(self, content: dict):
         try:
@@ -194,6 +215,7 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
 
         self.user.game.choose_winner(winner_id)
 
+    @handlers.register("chat")
     @require_ingame
     def _handle_chat(self, content: dict):
         # TODO rate limiting, spam blocking

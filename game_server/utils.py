@@ -2,6 +2,8 @@ from asyncio import Task, create_task, sleep
 from typing import MutableSequence, TypeVar, Union, List, Dict, Hashable, Iterable, Any, Callable, Tuple, Optional
 
 T = TypeVar("T")
+K = TypeVar("K")
+V = TypeVar("V")
 
 
 class SearchableList(MutableSequence[T]):
@@ -166,3 +168,14 @@ def single(iterable: Iterable[T]) -> T:
         raise ValueError("expected a single value from iterator, got more")
     except StopIteration:
         return value
+
+
+class FunctionRegistry(Dict[K, V]):
+    def register(self, key: K) -> Callable[[V], V]:
+        def _decorator(function):
+            if key in self:
+                raise ValueError(f"key {key} already registered")
+            self[key] = function
+            return function
+
+        return _decorator
