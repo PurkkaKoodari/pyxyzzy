@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from asyncio import get_event_loop, Handle
+from asyncio import get_event_loop, Handle, create_task
 from base64 import b64encode
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum, auto
 from hashlib import md5
 from os import urandom
@@ -11,17 +11,17 @@ from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Seq
                     TYPE_CHECKING, NewType)
 from uuid import UUID, uuid4
 
-from game_server.config import (MIN_THINK_TIME, MAX_THINK_TIME, MAX_BLANK_CARDS, MAX_PLAYER_LIMIT, MAX_POINT_LIMIT,
-                                DISCONNECTED_KICK_TIMER, HAND_SIZE, MAX_PASSWORD_LENGTH, MIN_ROUND_END_TIME,
-                                MAX_ROUND_END_TIME, MIN_IDLE_ROUNDS, MAX_IDLE_ROUNDS, DEFAULT_THINK_TIME,
-                                DEFAULT_ROUND_END_TIME, DEFAULT_PASSWORD, DEFAULT_POINT_LIMIT, DEFAULT_PLAYER_LIMIT,
-                                DEFAULT_BLANK_CARDS, DEFAULT_IDLE_ROUNDS, DISCONNECTED_REMOVE_TIMER,
-                                MAX_GAME_TITLE_LENGTH)
-from game_server.exceptions import InvalidGameState
-from game_server.utils import SearchableList, CallbackTimer, single
+from pyxyzzy.config import (MIN_THINK_TIME, MAX_THINK_TIME, MAX_BLANK_CARDS, MAX_PLAYER_LIMIT, MAX_POINT_LIMIT,
+                            DISCONNECTED_KICK_TIMER, HAND_SIZE, MAX_PASSWORD_LENGTH, MIN_ROUND_END_TIME,
+                            MAX_ROUND_END_TIME, MIN_IDLE_ROUNDS, MAX_IDLE_ROUNDS, DEFAULT_THINK_TIME,
+                            DEFAULT_ROUND_END_TIME, DEFAULT_PASSWORD, DEFAULT_POINT_LIMIT, DEFAULT_PLAYER_LIMIT,
+                            DEFAULT_BLANK_CARDS, DEFAULT_IDLE_ROUNDS, DISCONNECTED_REMOVE_TIMER,
+                            MAX_GAME_TITLE_LENGTH)
+from pyxyzzy.exceptions import InvalidGameState
+from pyxyzzy.utils import SearchableList, CallbackTimer, single
 
 if TYPE_CHECKING:
-    from game_server.consumer import GameConsumer
+    from pyxyzzy.server import GameConnection
 
 CardT = TypeVar("CardT")
 
@@ -127,8 +127,9 @@ class GameOptions:
     card_packs: Tuple[CardPack] = field(default=(), metadata={"type": tuple})
 
     def __setattr__(self, key, value):
-        if key in self.__class__.__dataclass_fields__:
-            field = self.__class__.__dataclass_fields__[key]
+        field_dict = {f.name: f for f in fields(self)}
+        if key in field_dict:
+            field = field_dict[key]
 
             required_type = None
             if "type" in field.metadata:
@@ -175,14 +176,14 @@ class User:
     game: Optional[Game] = None
     player: Optional[Player] = None
 
-    connection: Optional[GameConsumer]
+    connection: Optional[GameConnection]
     # TODO: do we need a different timer for kick and user delete? probably not
     _disconnect_kick_timer: CallbackTimer
     _disconnect_remove_timer: CallbackTimer
 
-    def __init__(self, name: str, server: GameServer, connection: GameConsumer):
+    def __init__(self, name: str, server: GameServer, connection: GameConnection):
         self.id = UserID(uuid4())
-        self.token = b64encode(urandom(24))
+        self.token = b64encode(urandom(24)).decode("ascii")
         self.name = name
         self.server = server
         self.connection = connection
@@ -198,7 +199,7 @@ class User:
         if self.game:
             self._disconnect_kick_timer.start(DISCONNECTED_KICK_TIMER, self._kick_if_disconnected)
 
-    def reconnected(self, connection: GameConsumer):
+    def reconnected(self, connection: GameConnection):
         self.connection = connection
         self._disconnect_kick_timer.cancel()
         self._disconnect_remove_timer.cancel()
@@ -226,7 +227,7 @@ class User:
 
     def send_message(self, message: dict):
         if self.connection:
-            self.connection.queue.put_nowait(message)
+            create_task(self.connection.send_json(message))
 
 
 class Deck(Generic[CardT]):

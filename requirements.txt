@@ -1,2 +1,1 @@
-Django >= 3.0.3
-channels >= 2.4.0
+websockets >= 8.1

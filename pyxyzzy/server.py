@@ -1,25 +1,26 @@
 from __future__ import annotations
 
+import json
 import re
-from asyncio import Queue
 from functools import wraps
+from json import JSONDecodeError
 from logging import getLogger
-from typing import Optional, Tuple, List, Callable
+from typing import Optional, Tuple, List, Callable, Union
 from uuid import UUID
 
-from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from websockets import WebSocketServerProtocol, ConnectionClosed
 
-from game_server.config import NAME_REGEX
-from game_server.exceptions import InvalidRequest, GameError, InvalidGameState
-from game_server.game import User, GameServer, UpdateType, Game, LeaveReason, WhiteCardID, UserID
-from game_server.utils import FunctionRegistry
+from pyxyzzy.config import NAME_REGEX
+from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
+from pyxyzzy.game import User, GameServer, UpdateType, Game, LeaveReason, WhiteCardID, UserID
+from pyxyzzy.utils import FunctionRegistry
 
 LOGGER = getLogger("pyXyzzy")
 
 
 def require_not_ingame(method):
     @wraps(method)
-    def _wrapped(self: GameConsumer, content: dict):
+    def _wrapped(self: GameConnection, content: dict):
         if self.user.game:
             raise InvalidGameState("user_in_game", "user already in game")
         return method(self, content)
@@ -29,7 +30,7 @@ def require_not_ingame(method):
 
 def require_ingame(method):
     @wraps(method)
-    def _wrapped(self: GameConsumer, content: dict):
+    def _wrapped(self: GameConnection, content: dict):
         if not self.user.game:
             raise InvalidGameState("user_not_in_game", "user not in game")
         return method(self, content)
@@ -40,7 +41,7 @@ def require_ingame(method):
 def require_czar(method):
     @wraps(method)
     @require_ingame
-    def _wrapped(self: GameConsumer, content: dict):
+    def _wrapped(self: GameConnection, content: dict):
         if self.user.player != self.user.game.card_czar:
             raise InvalidGameState("user_not_czar", "you are not the card czar")
         return method(self, content)
@@ -51,7 +52,7 @@ def require_czar(method):
 def require_host(method):
     @wraps(method)
     @require_ingame
-    def _wrapped(self: GameConsumer, content: dict):
+    def _wrapped(self: GameConnection, content: dict):
         if self.user.player != self.user.game.host:
             raise InvalidGameState("user_not_host", "you are not the host")
         return method(self, content)
@@ -59,51 +60,93 @@ def require_host(method):
     return _wrapped
 
 
-class GameConsumer(AsyncJsonWebsocketConsumer):
-    handlers: FunctionRegistry[str, Callable[[GameConsumer, dict], Optional[dict]]] = FunctionRegistry()
+def connection_factory(server: GameServer):
+    async def handler(websocket: WebSocketServerProtocol, _path: str) -> None:
+        await GameConnection(websocket, server).handler()
+
+    return handler
+
+
+class GameConnection:
+    handlers: FunctionRegistry[str, Callable[[GameConnection, dict], Optional[dict]]] = FunctionRegistry()
+
+    websocket: WebSocketServerProtocol
 
     user: Optional[User] = None
     server: GameServer
-    queue: Queue[dict]
 
-    async def receive_json(self, content, **kwargs):
+    def __init__(self, websocket: WebSocketServerProtocol, server: GameServer):
+        self.websocket = websocket
+        self.server = server
+
+    async def handler(self):
         try:
-            action = content["action"]
-            call_id = content["call_id"]
-        except KeyError:
-            raise ValueError("action or call_id missing or invalid")
-        if not isinstance(action, str) or not isinstance(call_id, (str, int, float)):
-            raise ValueError("action or call_id missing or invalid")
+            async for message in self.websocket:
+                await self._handle_message(message)
+        except InvalidRequest as ex:
+            await self.websocket.close(1003, ex.description)
+        except ConnectionClosed:
+            pass
+        finally:
+            if self.user:
+                self.user.disconnected()
 
+    async def send_json(self, data: dict):
+        if self.websocket.open:
+            await self.websocket.send(json.dumps(data))
+
+    async def _handle_message(self, message: Union[str, bytes]):
+        if not isinstance(message, str):
+            raise InvalidRequest("only text JSON messages allowed")
+        try:
+            parsed = json.loads(message)
+        except JSONDecodeError:
+            raise InvalidRequest("invalid JSON")
+        if not isinstance(parsed, dict):
+            raise InvalidRequest("only JSON objects allowed")
+
+        try:
+            action = parsed["action"]
+            call_id = parsed["call_id"]
+        except KeyError:
+            raise InvalidRequest("action or call_id missing or invalid")
+        if not isinstance(action, str) or not isinstance(call_id, (str, int, float)):
+            raise InvalidRequest("action or call_id missing or invalid")
+
+        if not self.user and action != "authenticate":
+            raise InvalidRequest("must authenticate first")
+
+        result = self._handle_request(action, call_id, parsed)
+
+        await self.websocket.send(json.dumps(result))
+
+    def _handle_request(self, action: str, call_id: Union[str, int, float], content: dict):
         # noinspection PyBroadException
         try:
-            if not self.user and action != "authenticate":
-                raise InvalidRequest("first call must be authenticate")
             try:
                 handler = self.handlers[action]
             except KeyError:
                 raise InvalidRequest("invalid action")
 
             call_result = handler(self, content) or {}
-            result = {
+            return {
                 "call": call_id,
                 "error": None,
                 **call_result
             }
-            self.queue.put_nowait(result)
         except GameError as ex:
-            self.queue.put_nowait({
+            return {
                 "call": call_id,
                 "error": ex.code,
                 "description": ex.description
-            })
+            }
         except Exception:
             LOGGER.error("Internal uncaught exception in WebSocket handler.", exc_info=True)
-            self.queue.put_nowait({
+            return {
                 "call": call_id,
                 "error": "internal_error",
                 "description": None
-            })
+            }
 
     @handlers.register("authenticate")
     def _handle_authenticate(self, content: dict):
@@ -111,8 +154,12 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
             raise InvalidRequest("already authenticated")
         if "id" in content and "token" in content:
             try:
-                user = self.server.users.find_by("id", UUID(hex=content["id"]))
-            except (ValueError, KeyError):
+                user_id = UUID(hex=content["id"])
+            except (KeyError, ValueError):
+                raise InvalidRequest("invalid id")
+            try:
+                user = self.server.users.find_by("id", user_id)
+            except KeyError:
                 raise InvalidRequest("user not found")
             if user.token != content["token"]:
                 raise InvalidRequest("invalid token")
@@ -122,19 +169,19 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
             name = content["name"]
             if not isinstance(name, str) or name != name.strip() or not re.match(NAME_REGEX, name):
                 raise InvalidRequest("invalid name")
-            if self.server.users.find_by("name", name):
+            if self.server.users.exists("name", name):
                 raise InvalidRequest("name already in use")
             user = User(name, self.server, self)
             self.server.add_user(user)
             self.user = user
         else:
-            raise InvalidRequest("missing parameters")
+            raise InvalidRequest("missing id/token or name")
         result = {
             "id": str(user.id),
-            "token": user.token
+            "token": user.token,
+            "in_game": user.game is not None
         }
         if user.game:
-            result["game"] = user.game
             user.game.send_updates(UpdateType.game, UpdateType.players, UpdateType.hand, UpdateType.options,
                                    to=user.player)
         return result
@@ -230,7 +277,3 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
             "type": "chat_message",
             "text": text
         })
-
-    async def disconnect(self, code):
-        if self.user is not None:
-            self.user.disconnected()
