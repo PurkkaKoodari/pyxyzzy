@@ -8,7 +8,7 @@ from hashlib import md5
 from os import urandom
 from random import shuffle, choice
 from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Sequence, Dict, Iterable,
-                    get_origin, TYPE_CHECKING, NewType)
+                    TYPE_CHECKING, NewType)
 from uuid import UUID, uuid4
 
 from game_server.config import (MIN_THINK_TIME, MAX_THINK_TIME, MAX_BLANK_CARDS, MAX_PLAYER_LIMIT, MAX_POINT_LIMIT,
@@ -124,15 +124,19 @@ class GameOptions:
     player_limit: int = field(default=DEFAULT_PLAYER_LIMIT, metadata={"min": 3, "max": MAX_PLAYER_LIMIT})
     point_limit: int = field(default=DEFAULT_POINT_LIMIT, metadata={"min": 1, "max": MAX_POINT_LIMIT})
     password: str = field(default=DEFAULT_PASSWORD, metadata={"max_length": MAX_PASSWORD_LENGTH})
-    card_packs: Tuple[CardPack] = ()
+    card_packs: Tuple[CardPack] = field(default=(), metadata={"type": tuple})
 
     def __setattr__(self, key, value):
         if key in self.__class__.__dataclass_fields__:
             field = self.__class__.__dataclass_fields__[key]
 
-            required_type = get_origin(field.type)
-            if isinstance(required_type, type) and not isinstance(value, required_type):
-                raise TypeError(f"{key} must be {required_type.__name__}")
+            required_type = None
+            if "type" in field.metadata:
+                required_type = field.metadata["type"]
+            elif isinstance(field.type, type):
+                required_type = field.type
+            if required_type is not None and not isinstance(value, required_type):
+                raise TypeError(f"{key} must be {required_type.__name__}, not {type(value).__name__}")
 
             if "min" in field.metadata and value < field.metadata["min"]:
                 raise ValueError(f"{key} must be at least {field.metadata['min']}")
