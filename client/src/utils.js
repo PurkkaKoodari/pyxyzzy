@@ -7,6 +7,6 @@ export const useMounted = () => {
         return () => {
             mounted.is = false
         }
-    })
+    }, [])
     return mounted
 }
