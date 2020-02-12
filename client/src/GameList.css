@@ -1,0 +1,78 @@
+.game-list .nav {
+    padding: 0.5rem 0.5rem 0;
+    display: flex;
+    align-items: center;
+    align-content: flex-end;
+    flex-wrap: wrap-reverse;
+}
+.game-list .nav > div {
+    padding: 0 0 6px;
+    display: flex;
+    align-items: center;
+    font-size: 1.15rem;
+}
+.game-list .nav .create-game {
+    margin-right: 0.8rem;
+}
+.game-list .nav .join-private {
+    margin-right: 0.8rem;
+}
+.game-list .nav .user-info {
+    margin-left: auto;
+}
+.game-list .nav > div > *:not(:last-child) {
+    margin-right: 0.5rem;
+}
+.game-list .nav div *, .game-list .refresh {
+    font-size: 1.15rem;
+    white-space: nowrap;
+}
+.game-list .public-header {
+    padding: 0.5rem 0.5rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.game-list .public-header h2 {
+    margin-bottom: 0;
+}
+.game-list .games {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    padding: 0.2rem;
+}
+.game-list .game, .game-list .game-spacer {
+    flex: 1 1 0px;
+    min-width: 200px;
+    padding: 0 0 0 0.3rem;
+    margin: 0.2rem;
+}
+.game-list .game-spacer {
+    border: 1px solid transparent;
+    border-width: 0 1px;
+}
+.game-list .game {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: 
+        "title join"
+        "players join"
+        "password join";
+    border: 1px solid black;
+}
+.game-list .game .title {
+    grid-area: title;
+    margin-bottom: 0;
+}
+.game-list .game .players {
+    grid-area: players;
+}
+.game-list .game .password {
+    grid-area: password;
+}
+.game-list .game .join {
+    grid-area: join;
+    padding-left: 0.8rem;
+    padding-right: 0.8rem;
+}

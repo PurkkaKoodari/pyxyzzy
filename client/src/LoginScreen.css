@@ -1,0 +1,25 @@
+.login {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 10px;
+    box-sizing: border-box;
+}
+.login form {
+    margin-bottom: 0.5rem;
+}
+.login form > * {
+    margin: 0 0.3rem 0 0;
+}
+.login .errors {
+    padding-left: 0;
+    list-style-type: none;
+    color: red;
+    font-size: 0.85rem;
+}
+.login .legal {
+    margin-top: auto;
+    margin-bottom: 0em;
+    font-size: 0.85rem;
+    color: #333;
+}
