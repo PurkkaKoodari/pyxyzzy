@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import "./LoginScreen.css"
+import "./LoginScreen.scss"
 import ExternalLink from "./ExternalLink"
 import { useMounted } from "./utils"
 

@@ -1,0 +1,27 @@
+.login {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 10px;
+    box-sizing: border-box;
+
+    form {
+        margin-bottom: 0.5rem;
+
+        > * {
+        margin: 0 0.3rem 0 0;
+        }
+    }
+    .errors {
+        padding-left: 0;
+        list-style-type: none;
+        color: red;
+        font-size: 0.85rem;
+    }
+    .legal {
+        margin-top: auto;
+        margin-bottom: 0em;
+        font-size: 0.85rem;
+        color: #333;
+    }
+}

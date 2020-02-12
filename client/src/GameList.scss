@@ -1,0 +1,90 @@
+.game-list {
+    .nav {
+        padding: 0.5rem 0.5rem 0;
+        display: flex;
+        align-items: center;
+        align-content: flex-end;
+        flex-wrap: wrap-reverse;
+    
+        > div {
+            padding: 0 0 6px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            font-size: 1.15rem;
+
+            > :not(:last-child) {
+                margin-right: 0.5rem;
+            }
+            * {
+                white-space: nowrap;
+            }
+        }
+        .create-game, .join-private {
+            margin-right: 1rem;
+        }
+        .user-info {
+            margin-left: auto;
+        }
+        .game-code {
+            max-width: 7ch;
+        }
+        .game-password {
+            max-width: 12ch;
+        }
+    }
+    .public-header {
+        padding: 0.5rem 0.5rem 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        .refresh {
+            font-size: 1.15rem;
+        }
+        h2 {
+            margin-bottom: 0;
+        }
+    }
+    .games {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        padding: 0.2rem;
+    }
+    .game, .game-spacer {
+        flex: 1 1 0px;
+        min-width: 200px;
+        padding: 0 0 0 0.3rem;
+        margin: 0.2rem;
+    }
+    .game-spacer {
+        border: 1px solid transparent;
+        border-width: 0 1px;
+    }
+    .game {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas: 
+            "title join"
+            "players join"
+            "password join";
+        border: 1px solid black;
+
+        .title {
+            grid-area: title;
+            margin-bottom: 0;
+        }
+        .players {
+            grid-area: players;
+        }
+        .password {
+            grid-area: password;
+        }
+        .join {
+            grid-area: join;
+            padding-left: 0.8rem;
+            padding-right: 0.8rem;
+        }
+    }
+}

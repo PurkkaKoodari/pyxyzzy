@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState, useEffect } from "react"
-import "./App.css"
+import "./App.scss"
 import ConnectingScreen from "./ConnectingScreen"
 import GameList from "./GameList"
 import GameScreen from "./GameScreen"

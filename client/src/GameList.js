@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react"
-import "./GameList.css"
+import "./GameList.scss"
 import Loader from "./Loader"
 import { useMounted } from "./utils"
 
@@ -66,7 +66,8 @@ const GameList = ({ connection, user }) => {
           <button type="button" onClick={null}>Create game</button>
         </div>
         <div className="join-private">
-          <input type="text" size="5" maxLength="5" placeholder="Code"></input>
+          <input type="text" className="game-code" maxLength="5" placeholder="Code" />
+          <input type="password" className="game-password" placeholder="Password" />
           <button type="button" onClick={null}>Join private game</button>
         </div>
         <div className="user-info">
