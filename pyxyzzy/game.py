@@ -16,7 +16,7 @@ from pyxyzzy.config import (MIN_THINK_TIME, MAX_THINK_TIME, MAX_BLANK_CARDS, MAX
                             MAX_ROUND_END_TIME, MIN_IDLE_ROUNDS, MAX_IDLE_ROUNDS, DEFAULT_THINK_TIME,
                             DEFAULT_ROUND_END_TIME, DEFAULT_PASSWORD, DEFAULT_POINT_LIMIT, DEFAULT_PLAYER_LIMIT,
                             DEFAULT_BLANK_CARDS, DEFAULT_IDLE_ROUNDS, DISCONNECTED_REMOVE_TIMER,
-                            MAX_GAME_TITLE_LENGTH)
+                            MAX_GAME_TITLE_LENGTH, GAME_ID_ALPHABET, GAME_ID_LENGTH)
 from pyxyzzy.exceptions import InvalidGameState
 from pyxyzzy.utils import SearchableList, CallbackTimer, single
 
@@ -29,6 +29,7 @@ UserID = NewType("UserID", UUID)
 WhiteCardID = NewType("WhiteCardID", UUID)
 CardPackID = NewType("CardPackID", UUID)
 RoundID = NewType("RoundID", UUID)
+GameID = NewType("GameID", str)
 
 
 class LeaveReason(Enum):
@@ -346,6 +347,7 @@ class Player:
 
 
 class Game:
+    id: GameID
     server: GameServer
     options: GameOptions
 
@@ -360,8 +362,9 @@ class Game:
     _update_handle: Optional[Handle] = None
 
     def __init__(self, server: GameServer):
+        self.id = server.generate_game_id()
         self.server = server
-        self.options = GameOptions()  # TODO load these from storage when applicable
+        self.options = GameOptions()  # TODO load these from some kind of storage when applicable
         self.rounds = []
         self.players = SearchableList(id=True)
         self._round_timer = CallbackTimer()
@@ -684,14 +687,30 @@ class Game:
             if to_send:
                 player.user.send_message(to_send)
 
+    def game_list_json(self):
+        return {
+            "id": str(self.id),
+            "title": self.options.game_title,
+            "players": len(self.players),
+            "player_limit": self.options.player_limit,
+            "passworded": bool(self.options.password)
+        }
+
 
 class GameServer:
-    games: List[Game]
+    games: SearchableList[Game]
     users: SearchableList[User]
 
     def __init__(self):
-        self.games = []
+        self.games = SearchableList(id=True)
         self.users = SearchableList(id=True, name=lambda user: user.name.lower())
+
+    def generate_game_id(self) -> GameID:
+        while True:
+            attempt = GameID("".join(choice(GAME_ID_ALPHABET) for _ in range(GAME_ID_LENGTH)))
+            if self.games.exists("id", attempt):
+                continue
+            return attempt
 
     def add_user(self, user: User):
         self.users.append(user)

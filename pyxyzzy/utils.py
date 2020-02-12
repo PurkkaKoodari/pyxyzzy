@@ -1,4 +1,6 @@
+import sys
 from asyncio import Task, create_task, sleep
+from operator import attrgetter
 from typing import MutableSequence, TypeVar, Union, List, Dict, Hashable, Iterable, Any, Callable, Tuple, Optional
 
 T = TypeVar("T")
@@ -15,7 +17,7 @@ class SearchableList(MutableSequence[T]):
         # initialize indices
         self.__indices = {}
         for name, function in indices.items():
-            function = function if callable(function) else lambda obj: getattr(obj, name)
+            function = function if callable(function) else attrgetter(name)
             self.__indices[name] = (function, {})
         # add and validate data
         self.__data = list(data)
@@ -89,7 +91,7 @@ class SearchableList(MutableSequence[T]):
     def __contains__(self, item: object):
         return item in self.__data
 
-    def index(self, x: Any, start: int = 0, end: int = None) -> int:
+    def index(self, x: Any, start: int = 0, end: int = sys.maxsize) -> int:
         return self.__data.index(x, start, end)
 
     def count(self, x: Any) -> int:

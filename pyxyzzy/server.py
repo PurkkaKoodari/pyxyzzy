@@ -113,9 +113,6 @@ class GameConnection:
         if not isinstance(action, str) or not isinstance(call_id, (str, int, float)):
             raise InvalidRequest("action or call_id missing or invalid")
 
-        if not self.user and action != "authenticate":
-            raise InvalidRequest("must authenticate first")
-
         result = self._handle_request(action, call_id, parsed)
 
         await self.websocket.send(json.dumps(result))
@@ -123,6 +120,9 @@ class GameConnection:
     def _handle_request(self, action: str, call_id: Union[str, int, float], content: dict):
         # noinspection PyBroadException
         try:
+            if not self.user and action != "authenticate":
+                raise GameError("not_authenticated", "must authenticate first")
+
             try:
                 handler = self.handlers[action]
             except KeyError:
@@ -130,28 +130,28 @@ class GameConnection:
 
             call_result = handler(self, content) or {}
             return {
-                "call": call_id,
+                "call_id": call_id,
                 "error": None,
                 **call_result
             }
         except GameError as ex:
             return {
-                "call": call_id,
+                "call_id": call_id,
                 "error": ex.code,
                 "description": ex.description
             }
         except Exception:
             LOGGER.error("Internal uncaught exception in WebSocket handler.", exc_info=True)
             return {
-                "call": call_id,
+                "call_id": call_id,
                 "error": "internal_error",
-                "description": None
+                "description": "internal error"
             }
 
     @handlers.register("authenticate")
     def _handle_authenticate(self, content: dict):
         if self.user:
-            raise InvalidRequest("already authenticated")
+            raise GameError("already_authenticated", "already authenticated")
         if "id" in content and "token" in content:
             try:
                 user_id = UUID(hex=content["id"])
@@ -160,9 +160,9 @@ class GameConnection:
             try:
                 user = self.server.users.find_by("id", user_id)
             except KeyError:
-                raise InvalidRequest("user not found")
+                raise GameError("user_not_found", "user not found")
             if user.token != content["token"]:
-                raise InvalidRequest("invalid token")
+                raise GameError("invalid_token", "invalid token")
             self.user = user
             self.user.reconnected(self)
         elif "name" in content:
@@ -170,7 +170,7 @@ class GameConnection:
             if not isinstance(name, str) or name != name.strip() or not re.match(NAME_REGEX, name):
                 raise InvalidRequest("invalid name")
             if self.server.users.exists("name", name):
-                raise InvalidRequest("name already in use")
+                raise GameError("name_in_use", "name already in use")
             user = User(name, self.server, self)
             self.server.add_user(user)
             self.user = user
@@ -179,12 +179,24 @@ class GameConnection:
         result = {
             "id": str(user.id),
             "token": user.token,
+            "name": user.name,
             "in_game": user.game is not None
         }
         if user.game:
             user.game.send_updates(UpdateType.game, UpdateType.players, UpdateType.hand, UpdateType.options,
                                    to=user.player)
         return result
+
+    @handlers.register("log_out")
+    def _handle_log_out(self, _: dict):
+        self.server.remove_user(self.user, LeaveReason.leave)
+        self.user = None
+
+    @handlers.register("game_list")
+    def _handle_game_list(self, _: dict):
+        return {
+            "games": [game.game_list_json() for game in self.server.games if game.options.public]
+        }
 
     @handlers.register("create_game")
     @require_not_ingame
