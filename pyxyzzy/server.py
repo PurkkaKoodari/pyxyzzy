@@ -12,7 +12,7 @@ from websockets import WebSocketServerProtocol, ConnectionClosed
 
 from pyxyzzy.config import NAME_REGEX
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
-from pyxyzzy.game import User, GameServer, UpdateType, Game, LeaveReason, WhiteCardID, UserID
+from pyxyzzy.game import User, GameServer, UpdateType, Game, LeaveReason, WhiteCardID, UserID, GameCode
 from pyxyzzy.utils import FunctionRegistry
 
 LOGGER = getLogger("pyXyzzy")
@@ -169,7 +169,7 @@ class GameConnection:
             name = content["name"]
             if not isinstance(name, str) or name != name.strip() or not re.match(NAME_REGEX, name):
                 raise InvalidRequest("invalid name")
-            if self.server.users.exists("name", name):
+            if self.server.users.exists("name", name.lower()):
                 raise GameError("name_in_use", "name already in use")
             user = User(name, self.server, self)
             self.server.add_user(user)
@@ -202,13 +202,33 @@ class GameConnection:
     @require_not_ingame
     def _handle_create_game(self, _: dict):
         game = Game(self.server)
+        game.options.game_title = f"{self.user.name}'s game"
         game.add_player(self.user)
         self.server.add_game(game)
 
     @handlers.register("join_game")
     @require_not_ingame
     def _handle_join_game(self, content: dict):
-        pass  # TODO implement game join
+        try:
+            game_code = GameCode(content["code"])
+            if not isinstance(game_code, str):
+                raise InvalidRequest("invalid code")
+        except KeyError:
+            raise InvalidRequest("invalid code")
+        try:
+            game = self.server.games.find_by("code", game_code)
+        except KeyError:
+            raise GameError("game_not_found", "game not found")
+
+        if game.options.password:
+            try:
+                password = content["password"]
+            except KeyError:
+                raise GameError("password_required", "a password is required to join the game")
+            if game.options.password != password:
+                raise GameError("password_incorrect", "incorrect password")
+
+        game.add_player(self.user)
 
     @handlers.register("leave_game")
     @require_ingame

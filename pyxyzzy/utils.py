@@ -45,7 +45,7 @@ class SearchableList(MutableSequence[T]):
             except KeyError:
                 pass
 
-    def find_by(self, index: str, key: Hashable):
+    def find_by(self, index: str, key: Hashable) -> T:
         """Find and return the item that has value ``key`` for the index ``index``.
 
         :raises KeyError: if an item with the given index value does not exist.
@@ -60,7 +60,7 @@ class SearchableList(MutableSequence[T]):
         except KeyError:
             raise KeyError(f"no item with that {index}") from None
 
-    def exists(self, index: str, key: Hashable):
+    def exists(self, index: str, key: Hashable) -> bool:
         """Check if an item that has value ``key`` for the index ``index`` exists.
 
         :raises ValueError: if there is no index for the given attribute.
@@ -72,7 +72,7 @@ class SearchableList(MutableSequence[T]):
         else:
             return True
 
-    def remove_by(self, attr: str, key: Hashable):
+    def remove_by(self, attr: str, key: Hashable) -> T:
         """Remove and return the item whose ``attr`` is equal to ``key``.
 
         :raises KeyError: if an item with the given attribute value does not exist.

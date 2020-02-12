@@ -29,7 +29,7 @@ UserID = NewType("UserID", UUID)
 WhiteCardID = NewType("WhiteCardID", UUID)
 CardPackID = NewType("CardPackID", UUID)
 RoundID = NewType("RoundID", UUID)
-GameID = NewType("GameID", str)
+GameCode = NewType("GameID", str)
 
 
 class LeaveReason(Enum):
@@ -347,7 +347,7 @@ class Player:
 
 
 class Game:
-    id: GameID
+    code: GameCode
     server: GameServer
     options: GameOptions
 
@@ -362,7 +362,7 @@ class Game:
     _update_handle: Optional[Handle] = None
 
     def __init__(self, server: GameServer):
-        self.id = server.generate_game_id()
+        self.code = server.generate_game_code()
         self.server = server
         self.options = GameOptions()  # TODO load these from some kind of storage when applicable
         self.rounds = []
@@ -375,14 +375,18 @@ class Game:
         self.white_deck = Deck.build_white(self.options.card_packs, self.options.blank_cards)
 
     @property
+    def game_running(self) -> bool:
+        return self.state in (GameState.not_started, GameState.game_ended)
+
+    @property
     def current_round(self) -> Optional[Round]:
         """Get the current round, or ``None`` if the game is not ongoing."""
-        return None if self.state in (GameState.not_started, GameState.game_ended) else self.rounds[-1]
+        return self.rounds[-1] if self.game_running else None
 
     @property
     def card_czar(self) -> Optional[Player]:
         """Get the current round's Card Czar, or ``None`` if the game is not ongoing."""
-        return None if self.current_round is None else self.current_round.card_czar
+        return self.current_round.card_czar if self.game_running else None
 
     @property
     def host(self) -> Player:
@@ -395,9 +399,10 @@ class Game:
         if len(self.players) >= self.options.player_limit:
             raise InvalidGameState("game_full", "the game is full")
         # check that there are enough white cards to distribute
-        total_cards_available = self.white_deck.total_cards() + sum(len(player.hand) for player in self.players)
-        if total_cards_available < (HAND_SIZE + 2) * (len(self.players) + 1):
-            raise InvalidGameState("too_few_white_cards", "too few white cards in game for this many players")
+        if self.game_running:
+            total_cards_available = self.white_deck.total_cards() + sum(len(player.hand) for player in self.players)
+            if total_cards_available < (HAND_SIZE + 2) * (len(self.players) + 1):
+                raise InvalidGameState("too_few_white_cards", "too few white cards in the game for any more players")
         # create the user
         player = Player(user)
         self.players.append(player)
@@ -614,12 +619,15 @@ class Game:
 
     def _round_end_timer(self):
         assert self.state == GameState.round_ended
+        # discard all played white cards
+        for cards in self.current_round.white_cards.values():
+            self.white_deck.discard_all(cards)
         self._start_next_round()
 
     def _cancel_round(self):
         assert self.state in (GameState.playing, GameState.judging)
         # return white cards to hands
-        for player_id, cards in self.current_round.white_cards:
+        for player_id, cards in self.current_round.white_cards.items():
             self.players.find_by("id", player_id).hand.extend(cards)
         # start the next round
         self._set_state(GameState.round_ended)
@@ -661,6 +669,7 @@ class Game:
                         played_cards = self.current_round.randomize_white_cards()
                         white_cards = [[card.to_json() for card in play_set] for play_set in played_cards]
                     to_send["game"] = {
+                        "code": self.code,
                         "state": self.state.name,
                         "current_round": {
                             "id": self.current_round.id,
@@ -675,7 +684,7 @@ class Game:
                         "id": str(player.id),
                         "name": player.user.name,
                         "score": player.score,
-                        "played": self.state == GameState.playing and self.rounds[-1].white_cards
+                        "played": self.state == GameState.playing and player.id in self.current_round.white_cards
                     } for player in self.players]
                 if UpdateType.options in player.pending_updates:
                     to_send["options"] = self.options.to_json()
@@ -689,7 +698,7 @@ class Game:
 
     def game_list_json(self):
         return {
-            "id": str(self.id),
+            "id": str(self.code),
             "title": self.options.game_title,
             "players": len(self.players),
             "player_limit": self.options.player_limit,
@@ -702,13 +711,13 @@ class GameServer:
     users: SearchableList[User]
 
     def __init__(self):
-        self.games = SearchableList(id=True)
+        self.games = SearchableList(code=True)
         self.users = SearchableList(id=True, name=lambda user: user.name.lower())
 
-    def generate_game_id(self) -> GameID:
+    def generate_game_code(self) -> GameCode:
         while True:
-            attempt = GameID("".join(choice(GAME_ID_ALPHABET) for _ in range(GAME_ID_LENGTH)))
-            if self.games.exists("id", attempt):
+            attempt = GameCode("".join(choice(GAME_ID_ALPHABET) for _ in range(GAME_ID_LENGTH)))
+            if self.games.exists("code", attempt):
                 continue
             return attempt
 
