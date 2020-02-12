@@ -113,9 +113,9 @@ class CardPack:
         }
 
 
-@dataclass
+@dataclass(frozen=True)
 class GameOptions:
-    game_title: str = field(default="", metadata={"max_length": MAX_GAME_TITLE_LENGTH})
+    game_title: str = field(default="Game", metadata={"min_length": 1, "max_length": MAX_GAME_TITLE_LENGTH})
     public: bool = field(default=False)
     think_time: int = field(default=DEFAULT_THINK_TIME, metadata={"min": MIN_THINK_TIME, "max": MAX_THINK_TIME})
     round_end_time: int = field(default=DEFAULT_ROUND_END_TIME,
@@ -125,40 +125,41 @@ class GameOptions:
     player_limit: int = field(default=DEFAULT_PLAYER_LIMIT, metadata={"min": 3, "max": MAX_PLAYER_LIMIT})
     point_limit: int = field(default=DEFAULT_POINT_LIMIT, metadata={"min": 1, "max": MAX_POINT_LIMIT})
     password: str = field(default=DEFAULT_PASSWORD, metadata={"max_length": MAX_PASSWORD_LENGTH})
-    card_packs: Tuple[CardPack] = field(default=(), metadata={"type": tuple})
+    card_packs: Tuple[CardPack] = field(default=())
 
-    def __setattr__(self, key, value):
-        field_dict = {f.name: f for f in fields(self)}
-        if key in field_dict:
-            field = field_dict[key]
+    def __post_init__(self):
+        for field in fields(self):
+            value = getattr(self, field.name)
 
             required_type = None
-            if "type" in field.metadata:
-                required_type = field.metadata["type"]
-            elif isinstance(field.type, type):
-                required_type = field.type
+            try:
+                required_type = field.type.__origin__
+            except AttributeError:
+                if isinstance(field.type, type):
+                    required_type = field.type
             if required_type is not None and not isinstance(value, required_type):
-                raise TypeError(f"{key} must be {required_type.__name__}, not {type(value).__name__}")
+                raise TypeError(f"{field.name} must be {required_type.__name__}, not {type(value).__name__}")
 
             if "min" in field.metadata and value < field.metadata["min"]:
-                raise ValueError(f"{key} must be at least {field.metadata['min']}")
+                raise ValueError(f"{field.name} must be at least {field.metadata['min']}")
             if "max" in field.metadata and value > field.metadata["max"]:
-                raise ValueError(f"{key} must be at most {field.metadata['max']}")
+                raise ValueError(f"{field.name} must be at most {field.metadata['max']}")
 
             if "minlength" in field.metadata and len(value) < field.metadata["minlength"]:
-                raise ValueError(f"length of {key} must be at least {field.metadata['min']}")
+                raise ValueError(f"length of {field.name} must be at least {field.metadata['min']}")
             if "maxlength" in field.metadata and len(value) > field.metadata["maxlength"]:
-                raise ValueError(f"length of {key} must be at most {field.metadata['maxlength']}")
-
-        object.__setattr__(self, key, value)
+                raise ValueError(f"length of {field.name} must be at most {field.metadata['maxlength']}")
 
     def to_json(self):
         return {
+            "game_title": self.game_title,
+            "public": self.public,
             "think_time": self.think_time,
             "round_end_time": self.round_end_time,
             "idle_rounds": self.idle_rounds,
             "blank_cards": self.blank_cards,
             "player_limit": self.player_limit,
+            "point_limit": self.point_limit,
             "password": self.password,
             "card_packs": [{
                 "id": str(pack.id),
@@ -194,6 +195,9 @@ class User:
     def __str__(self):
         return f"{self.name} [{self.id}]"
 
+    def __repr__(self):
+        return f"<User name={self.name} id={self.id}>"
+
     def disconnected(self):
         self.connection = None
         self._disconnect_remove_timer.start(DISCONNECTED_REMOVE_TIMER, self._remove_if_disconnected)
@@ -206,7 +210,7 @@ class User:
         self._disconnect_remove_timer.cancel()
 
     def added_to_game(self, game: Game, player: Player):
-        assert self.game, "user already in game"
+        assert not self.game, "user already in game"
         if not self.connection:
             raise InvalidGameState("user_not_connected", "user not connected")
         self.game = game
@@ -328,8 +332,8 @@ class Player:
     score: int = field(default=0, init=False)
     idle_rounds: int = field(default=0, init=False)
 
-    pending_updates: Set[UpdateType] = field(default_factory=set, init=False)
-    pending_events: List[dict] = field(default_factory=list, init=False)
+    pending_updates: Set[UpdateType] = field(default_factory=set, init=False, repr=False)
+    pending_events: List[dict] = field(default_factory=list, init=False, repr=False)
 
     @property
     def id(self):
@@ -361,10 +365,10 @@ class Game:
     _round_timer: CallbackTimer
     _update_handle: Optional[Handle] = None
 
-    def __init__(self, server: GameServer):
+    def __init__(self, server: GameServer, options: GameOptions):
         self.code = server.generate_game_code()
         self.server = server
-        self.options = GameOptions()  # TODO load these from some kind of storage when applicable
+        self.options = options
         self.rounds = []
         self.players = SearchableList(id=True)
         self._round_timer = CallbackTimer()
@@ -376,7 +380,7 @@ class Game:
 
     @property
     def game_running(self) -> bool:
-        return self.state in (GameState.not_started, GameState.game_ended)
+        return self.state not in (GameState.not_started, GameState.game_ended)
 
     @property
     def current_round(self) -> Optional[Round]:
@@ -408,6 +412,10 @@ class Game:
         self.players.append(player)
         user.added_to_game(self, player)
         # sync state to players
+        self.send_event({
+            "type": "player_join",
+            "player": player.user.name
+        })
         self.send_updates(UpdateType.game, UpdateType.players, UpdateType.hand, UpdateType.options, to=player)
         self.send_updates(UpdateType.players)
 
@@ -416,21 +424,21 @@ class Game:
             raise InvalidGameState("user_not_in_game", "user not in game")
         self.send_event({
             "type": "player_leave",
-            "player": player.user.id,
+            "player": player.user.name,
             "reason": reason.name
         })
         # notify the user object while game state is still valid
         player.user.removed_from_game()
-        # nuke the game if no players remain
-        if len(self.players) <= 1:
-            self.server.remove_game(self)
-            return
-        # send updates to the player now to ensure they get notified
-        self._send_pending_updates(to=player)
         # remove the player now so they won't get further messages
         self.players.remove(player)
+        # send updates to the player now to ensure they get notified
+        self._send_pending_updates(to=player)
+        # nuke the game if no players remain
+        if len(self.players) == 0:
+            self.server.remove_game(self)
+            return
         # end the game if only 2 players remain
-        if len(self.players) <= 3:
+        if len(self.players) <= 2:
             self.send_event({
                 "type": "too_few_players"
             })
@@ -550,11 +558,13 @@ class Game:
         else:
             self._set_state(GameState.judging)
 
-    def play_white_cards(self, player: Player, cards: Sequence[Tuple[WhiteCardID, Optional[str]]]):
+    def play_white_cards(self, round_id: RoundID, player: Player, cards: Sequence[Tuple[WhiteCardID, Optional[str]]]):
         if self.state != GameState.playing:
             raise InvalidGameState("invalid_round_state", "white cards are not being played for the round")
+        if round_id != self.current_round.id:
+            raise InvalidGameState("wrong_round", "the round is not being played")
         if not self.current_round.needs_to_play(player):
-            raise InvalidGameState("already_played", "you don't need to play more white cards")
+            raise InvalidGameState("already_played", "you already played white cards for the round")
         # validate the cards
         if len(set(slot_id for slot_id, _ in cards)) != len(cards):
             raise InvalidGameState("invalid_white_cards", "duplicate cards chosen")
@@ -596,9 +606,11 @@ class Game:
         if self.card_czar.idle_rounds >= self.options.idle_rounds:
             self.remove_player(self.card_czar, LeaveReason.idle)
 
-    def choose_winner(self, winning_card: WhiteCardID):
+    def choose_winner(self, round_id: RoundID, winning_card: WhiteCardID):
         if self.state != GameState.judging:
             raise InvalidGameState("invalid_round_state", "the winner is not being chosen for the round")
+        if round_id != self.current_round.id:
+            raise InvalidGameState("wrong_round", "the round is not being played")
         # figure out the winner from the winning card
         try:
             winner_id = single(player for player, cards in self.current_round.white_cards.items()
@@ -653,11 +665,12 @@ class Game:
             self._update_handle = get_event_loop().call_soon(self._send_pending_updates)
 
     def _send_pending_updates(self, to: Optional[Player] = None):
-        self._update_handle = None
+        if to is None:
+            self._update_handle = None
         for player in self._resolve_send_to(to):
             to_send = {}
-            # if the player was removed, just tell them that and move on
-            if to and to not in self.players:
+            # if the player was just removed, just tell them that and move on
+            if player not in self.players:
                 to_send["game"] = None
             else:
                 # otherwise, send them the updates that are pending
@@ -672,11 +685,11 @@ class Game:
                         "code": self.code,
                         "state": self.state.name,
                         "current_round": {
-                            "id": self.current_round.id,
+                            "id": str(self.current_round.id),
                             "black_card": self.current_round.black_card.to_json(),
                             "white_cards": white_cards,
                             "card_czar": self.current_round.card_czar.id,
-                            "winner": self.current_round.winner.id if self.current_round.winner else None
+                            "winner": str(self.current_round.winner.id) if self.current_round.winner else None
                         } if self.current_round else None
                     }
                 if UpdateType.players in player.pending_updates:
@@ -690,7 +703,7 @@ class Game:
                     to_send["options"] = self.options.to_json()
             # always send pending events
             if player.pending_events:
-                to_send["events"] = player.pending_events
+                to_send["events"] = player.pending_events[:]
             player.pending_updates.clear()
             player.pending_events.clear()
             if to_send:

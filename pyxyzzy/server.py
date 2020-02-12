@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import fields, replace
 from functools import wraps
 from json import JSONDecodeError
 from logging import getLogger
@@ -12,7 +13,8 @@ from websockets import WebSocketServerProtocol, ConnectionClosed
 
 from pyxyzzy.config import NAME_REGEX
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
-from pyxyzzy.game import User, GameServer, UpdateType, Game, LeaveReason, WhiteCardID, UserID, GameCode
+from pyxyzzy.game import (User, GameServer, UpdateType, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions,
+                          RoundID)
 from pyxyzzy.utils import FunctionRegistry
 
 LOGGER = getLogger("pyXyzzy")
@@ -201,8 +203,8 @@ class GameConnection:
     @handlers.register("create_game")
     @require_not_ingame
     def _handle_create_game(self, _: dict):
-        game = Game(self.server)
-        game.options.game_title = f"{self.user.name}'s game"
+        options = GameOptions(game_title=f"{self.user.name}'s game")
+        game = Game(self.server, options)
         game.add_player(self.user)
         self.server.add_game(game)
 
@@ -221,9 +223,8 @@ class GameConnection:
             raise GameError("game_not_found", "game not found")
 
         if game.options.password:
-            try:
-                password = content["password"]
-            except KeyError:
+            password = content.get("password", "")
+            if not password:
                 raise GameError("password_required", "a password is required to join the game")
             if game.options.password != password:
                 raise GameError("password_incorrect", "incorrect password")
@@ -255,7 +256,14 @@ class GameConnection:
     @handlers.register("game_options")
     @require_host
     def _handle_game_options(self, content: dict):
-        pass  # TODO implement options changing
+        changes = {}
+        for field in fields(GameOptions):
+            if field.name in content:
+                value = content[field.name]
+                if field.name == "card_packs":
+                    raise InvalidRequest("card pack setting not implemented")
+                changes[field.name] = value
+        self.user.game.options = replace(self.user.game.options, **changes)
 
     @handlers.register("start_game")
     @require_host
@@ -272,6 +280,10 @@ class GameConnection:
     def _handle_play_white(self, content: dict):
         cards: List[Tuple[WhiteCardID, Optional[str]]] = []
         try:
+            round_id = RoundID(UUID(hex=content["round"]))
+        except (KeyError, ValueError):
+            raise InvalidRequest("invalid round")
+        try:
             input_cards = content["cards"]
             for input_card in input_cards:
                 slot_id = WhiteCardID(UUID(hex=input_card["id"]))
@@ -282,17 +294,21 @@ class GameConnection:
         except (KeyError, ValueError):
             raise InvalidRequest("invalid cards")
 
-        self.user.game.play_white_cards(self.user.player, cards)
+        self.user.game.play_white_cards(round_id, self.user.player, cards)
 
     @handlers.register("choose_winner")
     @require_czar
     def _handle_choose_winner(self, content: dict):
         try:
+            round_id = RoundID(UUID(hex=content["round"]))
+        except (KeyError, ValueError):
+            raise InvalidRequest("invalid round")
+        try:
             winner_id = WhiteCardID(UUID(hex=content["winner"]))
         except (KeyError, ValueError):
             raise InvalidRequest("invalid winner")
 
-        self.user.game.choose_winner(winner_id)
+        self.user.game.choose_winner(round_id, winner_id)
 
     @handlers.register("chat")
     @require_ingame

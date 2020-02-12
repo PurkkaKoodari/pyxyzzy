@@ -25,6 +25,7 @@ const App = () => {
     setConnectionState(state.connection)
     if ("reconnectIn" in state) setRetryTime(state.reconnectIn)
     setUser(state.user)
+    if (!state.user) setGame(null)
   }, [])
 
   const handleUpdate = useCallback((update) => {
@@ -49,7 +50,7 @@ const App = () => {
   let gameScreen, connectingScreen = null
   if (user && game) {
     gameScreen = (
-      <GameScreen connection={connectionRef.current} />
+      <GameScreen connection={connectionRef.current} game={game} gameOptions={gameOptions} hand={hand} players={players} />
     )
   } else if (user) {
     gameScreen = (
