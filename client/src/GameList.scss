@@ -51,8 +51,7 @@
         padding: 0.2rem;
     }
     .game, .game-spacer {
-        flex: 1 1 0px;
-        min-width: 200px;
+        flex: 1 1 250px;
         padding: 0 0 0 0.3rem;
         margin: 0.2rem;
     }
@@ -64,7 +63,7 @@
         display: grid;
         grid-template-columns: 1fr auto;
         grid-template-areas: 
-            "title join"
+            "title code"
             "players join"
             "password join";
         border: 1px solid black;
@@ -72,6 +71,12 @@
         .title {
             grid-area: title;
             margin-bottom: 0;
+            font-size: 1.1rem;
+        }
+        .code {
+            grid-area: code;
+            text-align: center;
+            font-size: 1.1rem;
         }
         .players {
             grid-area: players;

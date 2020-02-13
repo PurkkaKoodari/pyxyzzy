@@ -41,11 +41,12 @@ const CodeJoinForm = ({ joining, onJoin }) => {
 
 const GameCard = ({ game, joining, onJoin }) => {
   return (
-    <div className="game" key={game.id}>
+    <div className="game" key={game.code}>
       <h4 className="title">{game.title}</h4>
+      <div className="code">{game.code}</div>
       <div className="players">Players: {game.players}/{game.player_limit}</div>
       <div className="password">{game.passworded ? "Requires password" : "Open"}</div>
-      <button type="button" className="join" disabled={joining} onClick={() => onJoin(game.id)}>Join</button>
+      <button type="button" className="join" disabled={joining} onClick={() => onJoin(game.code)}>Join</button>
     </div>
   )
 }
@@ -128,8 +129,8 @@ const GameList = ({ connection, user }) => {
       <div className="no-games error">Failed to retrieve game list.</div>
     )
   } else {
-    const trimmed = filter.trim()
-    const filtered = trimmed === "" ? games : games.filter(game => game.title.includes(trimmed))
+    const trimmed = filter.trim().toUpperCase()
+    const filtered = trimmed === "" ? games : games.filter(game => game.title.toUpperCase().includes(trimmed) || game.code.includes(trimmed))
     if (filtered.length === 0) {
       gameList = (
         <div className="no-games">{trimmed === "" ? "There are currently no public games." : "No public games match your search."}</div>

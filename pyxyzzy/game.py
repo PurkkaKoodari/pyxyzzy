@@ -721,7 +721,7 @@ class Game:
 
     def game_list_json(self):
         return {
-            "id": str(self.code),
+            "code": str(self.code),
             "title": self.options.game_title,
             "players": len(self.players),
             "player_limit": self.options.player_limit,
