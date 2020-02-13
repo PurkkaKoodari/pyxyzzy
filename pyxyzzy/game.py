@@ -595,7 +595,7 @@ class Game:
         self._check_all_played()
         # sync state to players
         self.send_updates(UpdateType.players)
-        self.send_updates(UpdateType.hand, to=player)
+        self.send_updates(UpdateType.hand, UpdateType.game, to=player)
 
     def _check_all_played(self):
         if self.state != GameState.playing:
@@ -686,9 +686,11 @@ class Game:
                     to_send["hand"] = [card.to_json() for card in player.hand]
                 if UpdateType.game in player.pending_updates:
                     white_cards = None
-                    if self.state == GameState.judging:
+                    if self.state in (GameState.judging, GameState.round_ended):
                         played_cards = self.current_round.randomize_white_cards()
                         white_cards = [[card.to_json() for card in play_set] for play_set in played_cards]
+                    elif self.state == GameState.playing and player.id in self.current_round.white_cards:
+                        white_cards = [card.to_json() for card in self.current_round.white_cards[player.id]]
                     to_send["game"] = {
                         "code": self.code,
                         "state": self.state.name,
