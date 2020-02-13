@@ -655,7 +655,7 @@ class Game:
 
     def send_updates(self, *kinds: UpdateType, to: Optional[Player] = None, full_resync: bool = False):
         if full_resync:
-            kinds = UpdateType.__members__
+            kinds = UpdateType.__members__.values()
         for player in self._resolve_send_to(to):
             player.pending_updates.update(kinds)
         self._send_pending_updates_later()
