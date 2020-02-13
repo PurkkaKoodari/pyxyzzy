@@ -127,6 +127,8 @@ class GameOptions:
     password: str = field(default=DEFAULT_PASSWORD, metadata={"max_length": MAX_PASSWORD_LENGTH})
     card_packs: Tuple[CardPack] = field(default=())
 
+    updateable_ingame = ["game_title", "public", "password"]
+
     def __post_init__(self):
         for field in fields(self):
             value = getattr(self, field.name)

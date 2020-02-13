@@ -273,6 +273,8 @@ class GameConnection:
         changes = {}
         for field in fields(GameOptions):
             if field.name in content:
+                if self.user.game.game_running and field.name not in GameOptions.updateable_ingame:
+                    raise InvalidGameState("option_locked", f"{field.name} can't be changed while the game is ongoing")
                 value = content[field.name]
                 if field.name == "card_packs":
                     raise InvalidRequest("card pack setting not implemented")
