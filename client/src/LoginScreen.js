@@ -74,7 +74,8 @@ const LoginScreen = ({ connection }) => {
       <p className="legal">
         pyXyzzy is a clone of <ExternalLink href="https://www.cardsagainsthumanity.com/">Cards Against Humanity</ExternalLink>, which
         is available under the <ExternalLink href="https://creativecommons.org/licenses/by-nc-sa/2.0/">CC BY-NC-SA 2.0</ExternalLink> license.
-        The source code is available on <ExternalLink href="#">TODO</ExternalLink>.
+        The source code is available on <ExternalLink href="#">TODO</ExternalLink> and licensed under
+        the <ExternalLink href="https://opensource.org/licenses/MIT">MIT license</ExternalLink>.
       </p>
     </div>
   )
