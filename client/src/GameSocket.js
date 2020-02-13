@@ -1,13 +1,14 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
+import { unknownError } from "./utils"
 
 const INITIAL_RECONNECT_INTERVAL = .5
 const MAX_RECONNECT_INTERVAL = 15
 
-const SESSIONSTORAGE_KEY = "pyXyzzy.session"
+const SESSION_STORAGE_KEY = "pyXyzzy.session"
 
 const getSessionFromStorage = () => {
   try {
-    const sessionJson = sessionStorage.getItem(SESSIONSTORAGE_KEY)
+    const sessionJson = localStorage.getItem(SESSION_STORAGE_KEY)
     if (!sessionJson) return null
     const session = JSON.parse(sessionJson)
     if (!("id" in session && "token" in session)) return null
@@ -26,16 +27,22 @@ class ApiError extends Error {
   }
 }
 
+// Because there seems to be no other sane way to integrate WebSockets with React,
+// the component enforces that the callbacks must not change (i.e. they must just take
+// the event and pass it to some app-level setState). Additionally, changing the URL
+// is not supported.
+// The following line disables the warning for not monitoring the parameters, as there's
+// no point in wrapping literally everything in useCallback and similar. If the parameters
+// change, the useEffect hook throws.
+
 /* eslint-disable react-hooks/exhaustive-deps */
 
 const GameSocket = forwardRef(({ url, onEvent, onUpdate, onStateChange }, ref) => {
-  const handlersChanged = useRef(0)
+  const renderCount = useRef(0)
 
   useEffect(() => {
-    if (++handlersChanged.current > 1) {
-      alert("The url or handlers for GameSocket changed. Because there seems to be no other sane way " +
-        "to integrate WebSockets with React, they must not change (use useCallback). Either " +
-        "useCallback was not used somewhere, or something else is very broken.")
+    if (++renderCount.current > 1) {
+      throw new Error("the parameters for GameSocket must not change")
     }
   }, [url, onEvent, onUpdate, onStateChange])
 
@@ -59,7 +66,7 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, onStateChange }, ref) =
 
   const saveSession = (session) => {
     state.session = session
-    sessionStorage.setItem(SESSIONSTORAGE_KEY, JSON.stringify(session))
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
   }
 
   const disconnected = () => {
@@ -103,12 +110,26 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, onStateChange }, ref) =
       })
     })
     ws.addEventListener("message", (e) => {
+      if (state.closing) return
       const data = JSON.parse(e.data)
-      if ("call_id" in data) {
+      if ("disconnect" in data && data.disconnect === "connected_elsewhere") {
+        state.closing = true
+        onStateChange({
+          connection: "connected_elsewhere",
+          user: null
+        })
+      } else if ("call_id" in data) {
         const call = state.ongoing[data.call_id]
         if (!call) throw new Error("got response to unknown call from server")
         if (data.error) {
           call.fail(data.error, data.description)
+          if (data.error === "not_authenticated") {
+            saveSession(null)
+            onStateChange({
+              connection: "connected",
+              user: null
+            })
+          }
         } else {
           call.success(data)
         }
@@ -142,7 +163,7 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, onStateChange }, ref) =
           user: null
         })
       } else {
-        console.error(error)
+        unknownError(error)
       }
     }
   }
@@ -170,6 +191,7 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, onStateChange }, ref) =
   const doLogout = async () => {
     await doCall("log_out", {}, false)
     state.authenticated = false
+    saveSession(null)
     onStateChange({
       connection: "connected",
       user: null

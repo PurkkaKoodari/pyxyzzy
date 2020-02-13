@@ -1,6 +1,6 @@
 import React from "react"
 import "./GameScreen.scss"
-import { useMounted } from "./utils"
+import { useMounted, unknownError } from "./utils"
 
 const GameScreen = ({ connection, game }) => {
   const mounted = useMounted()
@@ -9,7 +9,7 @@ const GameScreen = ({ connection, game }) => {
     try {
       await connection.call("leave_game")
     } catch (error) {
-      console.error(error)
+      unknownError(error)
     }
   }
 

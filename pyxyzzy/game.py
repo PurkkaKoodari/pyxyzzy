@@ -198,13 +198,17 @@ class User:
     def __repr__(self):
         return f"<User name={self.name} id={self.id}>"
 
-    def disconnected(self):
+    def disconnected(self, connection: GameConnection):
+        if connection is not self.connection:
+            return
         self.connection = None
         self._disconnect_remove_timer.start(DISCONNECTED_REMOVE_TIMER, self._remove_if_disconnected)
         if self.game:
             self._disconnect_kick_timer.start(DISCONNECTED_KICK_TIMER, self._kick_if_disconnected)
 
     def reconnected(self, connection: GameConnection):
+        if self.connection:
+            create_task(self.connection.replaced())
         self.connection = connection
         self._disconnect_kick_timer.cancel()
         self._disconnect_remove_timer.cancel()
@@ -416,7 +420,7 @@ class Game:
             "type": "player_join",
             "player": player.user.name
         })
-        self.send_updates(UpdateType.game, UpdateType.players, UpdateType.hand, UpdateType.options, to=player)
+        self.send_updates(full_resync=True, to=player)
         self.send_updates(UpdateType.players)
 
     def remove_player(self, player: Player, reason: LeaveReason):
@@ -649,7 +653,9 @@ class Game:
     def _resolve_send_to(self, to: Optional[Player]):
         return self.players if to is None else [to]
 
-    def send_updates(self, *kinds: UpdateType, to: Optional[Player] = None):
+    def send_updates(self, *kinds: UpdateType, to: Optional[Player] = None, full_resync: bool = False):
+        if full_resync:
+            kinds = UpdateType.__members__
         for player in self._resolve_send_to(to):
             player.pending_updates.update(kinds)
         self._send_pending_updates_later()

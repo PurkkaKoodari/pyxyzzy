@@ -23,6 +23,15 @@ html.connecting {
     display: flex;
     justify-content: center;
     align-items: center;
+
+    .loader-text {
+        width: 70vw;
+    }
+}
+@media (max-width: 500px) {
+    .connecting-overlay .loader-text {
+        width: 90vw;
+    }
 }
 h1 {
     font-size: 2rem;

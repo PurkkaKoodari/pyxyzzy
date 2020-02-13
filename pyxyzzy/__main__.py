@@ -1,3 +1,4 @@
+import logging
 import sys
 from asyncio import get_event_loop
 from signal import SIGTERM, SIGINT
@@ -6,6 +7,8 @@ from websockets import serve
 
 from pyxyzzy.game import GameServer
 from pyxyzzy.server import connection_factory
+
+logging.basicConfig(format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stderr, level=logging.INFO)
 
 loop = get_event_loop()
 stop_server = loop.create_future()

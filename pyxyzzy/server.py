@@ -82,6 +82,7 @@ class GameConnection:
         self.server = server
 
     async def handler(self):
+        LOGGER.info("New connection from %s", self.websocket.remote_address)
         try:
             async for message in self.websocket:
                 await self._handle_message(message)
@@ -90,12 +91,20 @@ class GameConnection:
         except ConnectionClosed:
             pass
         finally:
+            LOGGER.info("Connection closed for %s with code %s",
+                        self.websocket.remote_address, self.websocket.close_code)
             if self.user:
-                self.user.disconnected()
+                self.user.disconnected(self)
 
     async def send_json(self, data: dict):
         if self.websocket.open:
             await self.websocket.send(json.dumps(data))
+
+    async def replaced(self):
+        await self.send_json({
+            "disconnect": "connected_elsewhere"
+        })
+        await self.websocket.close()
 
     async def _handle_message(self, message: Union[str, bytes]):
         if not isinstance(message, str):
@@ -137,6 +146,10 @@ class GameConnection:
                 **call_result
             }
         except GameError as ex:
+            # force a full resync if that will likely be useful
+            if isinstance(ex, InvalidGameState) and self.user and self.user.game:
+                LOGGER.error("%s hit an error likely caused by desync", self.user, exc_info=True)
+                self.user.game.send_updates(full_resync=True, to=self.user.player)
             return {
                 "call_id": call_id,
                 "error": ex.code,
@@ -178,6 +191,8 @@ class GameConnection:
             self.user = user
         else:
             raise InvalidRequest("missing id/token or name")
+
+        LOGGER.info("%s authenticated as %s", self.websocket.remote_address, self.user)
         result = {
             "id": str(user.id),
             "token": user.token,
@@ -185,8 +200,7 @@ class GameConnection:
             "in_game": user.game is not None
         }
         if user.game:
-            user.game.send_updates(UpdateType.game, UpdateType.players, UpdateType.hand, UpdateType.options,
-                                   to=user.player)
+            user.game.send_updates(full_resync=True, to=user.player)
         return result
 
     @handlers.register("log_out")

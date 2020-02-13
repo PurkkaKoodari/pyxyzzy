@@ -1,21 +1,21 @@
 .game-list {
-    .nav {
-        padding: 0.5rem 0.5rem 0;
+    .nav, .nav > div, .public-header, .public-header > div {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        align-content: flex-end;
+    }
+    .nav, .public-header {
+        font-size: 1.15rem;
+        padding: 0.5rem 0.5rem 0;
+    }
+    .nav {
         flex-wrap: wrap-reverse;
     
         > div {
-            padding: 0 0 6px;
-            display: flex;
             flex-wrap: wrap;
-            align-items: center;
             font-size: 1.15rem;
+            padding: 0 0 0.5rem;
 
-            > :not(:last-child) {
-                margin-right: 0.5rem;
-            }
             * {
                 white-space: nowrap;
             }
@@ -27,23 +27,21 @@
             margin-left: auto;
         }
         .game-code {
-            max-width: 7ch;
+            max-width: 8ch;
         }
-        .game-password {
-            max-width: 12ch;
+        .user-name, .game-code {
+            margin-right: 0.5rem;
         }
     }
     .public-header {
-        padding: 0.5rem 0.5rem 0;
-        display: flex;
-        align-items: center;
         justify-content: space-between;
 
-        .refresh {
-            font-size: 1.15rem;
+        h2, .filter, .refresh {
+            margin-bottom: 0.5rem;
         }
-        h2 {
-            margin-bottom: 0;
+        .filter {
+            max-width: 20ch;
+            margin-right: 0.5rem;
         }
     }
     .games {
@@ -86,5 +84,11 @@
             padding-left: 0.8rem;
             padding-right: 0.8rem;
         }
+    }
+    .no-games {
+        padding: 0.5rem;
+    }
+    .no-games.error {
+        color: red;
     }
 }
