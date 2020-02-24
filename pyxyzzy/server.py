@@ -9,12 +9,11 @@ from logging import getLogger
 from typing import Optional, Tuple, List, Callable, Union
 from uuid import UUID
 
-from websockets import WebSocketServerProtocol, ConnectionClosed
+from websockets import WebSocketServerProtocol, ConnectionClosed, serve
 
-from pyxyzzy.config import NAME_REGEX
+from pyxyzzy.config import config
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
-from pyxyzzy.game import (User, GameServer, UpdateType, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions,
-                          RoundID)
+from pyxyzzy.game import User, GameServer, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions, RoundID
 from pyxyzzy.utils import FunctionRegistry
 
 LOGGER = getLogger("pyXyzzy")
@@ -67,6 +66,12 @@ def connection_factory(server: GameServer):
         await GameConnection(websocket, server).handler()
 
     return handler
+
+
+async def run_server(stop_condition):
+    game_server = GameServer()
+    async with serve(connection_factory(game_server), config.server.host, config.server.port):
+        await stop_condition
 
 
 class GameConnection:
@@ -182,7 +187,7 @@ class GameConnection:
             self.user.reconnected(self)
         elif "name" in content:
             name = content["name"]
-            if not isinstance(name, str) or name != name.strip() or not re.match(NAME_REGEX, name):
+            if not isinstance(name, str) or not config.users.username.is_valid_name(name):
                 raise InvalidRequest("invalid name")
             if self.server.users.exists("name", name.lower()):
                 raise GameError("name_in_use", "name already in use")
@@ -329,7 +334,7 @@ class GameConnection:
     @handlers.register("chat")
     @require_ingame
     def _handle_chat(self, content: dict):
-        # TODO rate limiting, spam blocking
+        # TODO rate limiting, spam blocking, blacklist
         try:
             text = content["text"]
             if not isinstance(text, str) or not text.strip():

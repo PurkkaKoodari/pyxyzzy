@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from asyncio import get_event_loop, Handle, create_task
 from base64 import b64encode
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from hashlib import md5
 from os import urandom
@@ -11,14 +11,9 @@ from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Seq
                     TYPE_CHECKING, NewType)
 from uuid import UUID, uuid4
 
-from pyxyzzy.config import (MIN_THINK_TIME, MAX_THINK_TIME, MAX_BLANK_CARDS, MAX_PLAYER_LIMIT, MAX_POINT_LIMIT,
-                            DISCONNECTED_KICK_TIMER, HAND_SIZE, MAX_PASSWORD_LENGTH, MIN_ROUND_END_TIME,
-                            MAX_ROUND_END_TIME, MIN_IDLE_ROUNDS, MAX_IDLE_ROUNDS, DEFAULT_THINK_TIME,
-                            DEFAULT_ROUND_END_TIME, DEFAULT_PASSWORD, DEFAULT_POINT_LIMIT, DEFAULT_PLAYER_LIMIT,
-                            DEFAULT_BLANK_CARDS, DEFAULT_IDLE_ROUNDS, DISCONNECTED_REMOVE_TIMER,
-                            MAX_GAME_TITLE_LENGTH, GAME_ID_ALPHABET, GAME_ID_LENGTH)
+from pyxyzzy.config import config
 from pyxyzzy.exceptions import InvalidGameState
-from pyxyzzy.utils import SearchableList, CallbackTimer, single
+from pyxyzzy.utils import SearchableList, CallbackTimer, single, ConfigObject, generate_code
 
 if TYPE_CHECKING:
     from pyxyzzy.server import GameConnection
@@ -113,63 +108,29 @@ class CardPack:
         }
 
 
+def _card_packs_json(packs: Sequence[CardPack]):
+    return [{
+        "id": str(pack.id),
+        "name": pack.name,
+        "white_cards": len(pack.white_cards),
+        "black_cards": len(pack.black_cards)
+    } for pack in packs]
+
+
 @dataclass(frozen=True)
-class GameOptions:
-    game_title: str = field(default="Game", metadata={"min_length": 1, "max_length": MAX_GAME_TITLE_LENGTH})
-    public: bool = field(default=False)
-    think_time: int = field(default=DEFAULT_THINK_TIME, metadata={"min": MIN_THINK_TIME, "max": MAX_THINK_TIME})
-    round_end_time: int = field(default=DEFAULT_ROUND_END_TIME,
-                                metadata={"min": MIN_ROUND_END_TIME, "max": MAX_ROUND_END_TIME})
-    idle_rounds: int = field(default=DEFAULT_IDLE_ROUNDS, metadata={"min": MIN_IDLE_ROUNDS, "max": MAX_IDLE_ROUNDS})
-    blank_cards: int = field(default=DEFAULT_BLANK_CARDS, metadata={"min": 0, "max": MAX_BLANK_CARDS})
-    player_limit: int = field(default=DEFAULT_PLAYER_LIMIT, metadata={"min": 3, "max": MAX_PLAYER_LIMIT})
-    point_limit: int = field(default=DEFAULT_POINT_LIMIT, metadata={"min": 1, "max": MAX_POINT_LIMIT})
-    password: str = field(default=DEFAULT_PASSWORD, metadata={"max_length": MAX_PASSWORD_LENGTH})
-    card_packs: Tuple[CardPack] = field(default=())
+class GameOptions(ConfigObject):
+    game_title: str = config.game.title.make_options_field()
+    public: bool = config.game.public.make_options_field()
+    think_time: int = config.game.think_time.make_options_field()
+    round_end_time: int = config.game.round_end_time.make_options_field()
+    idle_rounds: int = config.game.idle_rounds.make_options_field()
+    blank_cards: int = config.game.blank_cards.count.make_options_field()
+    player_limit: int = config.game.player_limit.make_options_field()
+    point_limit: int = config.game.point_limit.make_options_field()
+    password: str = config.game.password.make_options_field()
+    card_packs: Tuple[CardPack] = field(default=(), metadata={"to_json": _card_packs_json})
 
     updateable_ingame = ["game_title", "public", "password"]
-
-    def __post_init__(self):
-        for field in fields(self):
-            value = getattr(self, field.name)
-
-            required_type = None
-            try:
-                required_type = field.type.__origin__
-            except AttributeError:
-                if isinstance(field.type, type):
-                    required_type = field.type
-            if required_type is not None and not isinstance(value, required_type):
-                raise TypeError(f"{field.name} must be {required_type.__name__}, not {type(value).__name__}")
-
-            if "min" in field.metadata and value < field.metadata["min"]:
-                raise ValueError(f"{field.name} must be at least {field.metadata['min']}")
-            if "max" in field.metadata and value > field.metadata["max"]:
-                raise ValueError(f"{field.name} must be at most {field.metadata['max']}")
-
-            if "minlength" in field.metadata and len(value) < field.metadata["minlength"]:
-                raise ValueError(f"length of {field.name} must be at least {field.metadata['min']}")
-            if "maxlength" in field.metadata and len(value) > field.metadata["maxlength"]:
-                raise ValueError(f"length of {field.name} must be at most {field.metadata['maxlength']}")
-
-    def to_json(self):
-        return {
-            "game_title": self.game_title,
-            "public": self.public,
-            "think_time": self.think_time,
-            "round_end_time": self.round_end_time,
-            "idle_rounds": self.idle_rounds,
-            "blank_cards": self.blank_cards,
-            "player_limit": self.player_limit,
-            "point_limit": self.point_limit,
-            "password": self.password,
-            "card_packs": [{
-                "id": str(pack.id),
-                "name": pack.name,
-                "white_cards": len(pack.white_cards),
-                "black_cards": len(pack.black_cards)
-            } for pack in self.card_packs]
-        }
 
 
 class User:
@@ -204,9 +165,9 @@ class User:
         if connection is not self.connection:
             return
         self.connection = None
-        self._disconnect_remove_timer.start(DISCONNECTED_REMOVE_TIMER, self._remove_if_disconnected)
+        self._disconnect_remove_timer.start(config.users.disconnect_forget_time, self._remove_if_disconnected)
         if self.game:
-            self._disconnect_kick_timer.start(DISCONNECTED_KICK_TIMER, self._kick_if_disconnected)
+            self._disconnect_kick_timer.start(config.users.disconnect_kick_time, self._kick_if_disconnected)
 
     def reconnected(self, connection: GameConnection):
         if self.connection:
@@ -411,7 +372,7 @@ class Game:
         # check that there are enough white cards to distribute
         if self.game_running:
             total_cards_available = self.white_deck.total_cards() + sum(len(player.hand) for player in self.players)
-            if total_cards_available < (HAND_SIZE + 2) * (len(self.players) + 1):
+            if total_cards_available < (config.game.hand_size + 2) * (len(self.players) + 1):
                 raise InvalidGameState("too_few_white_cards", "too few white cards in the game for any more players")
         # create the user
         player = Player(user)
@@ -497,7 +458,7 @@ class Game:
             raise InvalidGameState("too_few_players", "too few players")
         if self.black_deck.total_cards() == 0:
             raise InvalidGameState("too_few_black_cards", "no black cards in selected packs")
-        if self.white_deck.total_cards() < (HAND_SIZE + 2) * len(self.players):
+        if self.white_deck.total_cards() < (config.game.hand_size + 2) * len(self.players):
             raise InvalidGameState("too_few_white_cards", "too few white cards in selected packs for this many players")
         # start the game
         self._start_next_round()
@@ -533,7 +494,12 @@ class Game:
         self.rounds.append(round_)
         # draw cards to hands
         for player in self.players:
-            target_cards = HAND_SIZE if player == card_czar else HAND_SIZE + black_card.draw_count
+            # the card czar only draws cards up to hand_size
+            target_cards = config.game.hand_size
+            # other players might draw extras if indicated on the card
+            if player != card_czar:
+                target_cards += black_card.draw_count
+            # actually draw the cards
             while len(player.hand) < target_cards:
                 player.hand.append(self.white_deck.draw())
         # start idle timer
@@ -739,7 +705,7 @@ class GameServer:
 
     def generate_game_code(self) -> GameCode:
         while True:
-            attempt = GameCode("".join(choice(GAME_ID_ALPHABET) for _ in range(GAME_ID_LENGTH)))
+            attempt = GameCode(generate_code(config.game.code.characters, config.game.code.length))
             if self.games.exists("code", attempt):
                 continue
             return attempt

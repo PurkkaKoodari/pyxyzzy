@@ -1,0 +1,75 @@
+# This file contains the configuration for the game.
+
+[server]
+# Whether or not to enable various debug features, such as DEBUG level logging.
+debug = true
+# The listen address for the game server.
+host = "127.0.0.1"
+port = 8080
+
+[game]
+# Maximum length for game titles.
+title.max_length = 32
+# Format for the default game title. {USER} is replaced with creator's username.
+title.default = "{USER}'s game"
+# A list of regexes that will be disallowed in game titles.
+title.blacklist = []
+
+# The minimum and maximum length of game passwords, and the length of the default generated password.
+password.length = { default = 0, min = 0, max = 100 }
+# The characters used in generated passwords.
+password.characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+# Whether or not games are public by default.
+public.default = false
+# Whether or not games can be made public.
+public.allowed = true
+
+# How many seconds before a player is deemed idle and skipped.
+think_time = { default = 60, min = 5, max = 600 }
+# How many seconds between the winner being chosen and the next round starting.
+round_end_time = { default = 8, min = 2, max = 30 }
+# How many rounds a player can idle before they are kicked.
+idle_rounds = { default = 2, min = 1, max = 5 }
+
+# How many blank cards are included in the deck.
+blank_cards.count = { default = 0, min = 0, max = 40 }
+# The maximum length of blank card text in characters.
+blank_cards.max_length = 200
+# A list of regexes that will be disallowed in blank cards.
+blank_cards.blacklist = []
+
+# How many players are allowed in a game.
+player_limit = { default = 10, min = 3, max = 20 }
+# How many points to win a game.
+point_limit = { default = 8, min = 1, max = 50 }
+
+# How many cards are in a player's hand after drawing.
+hand_size = 10
+
+# The characters from which game codes are constructed.
+code.characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+# The length of game codes.
+code.length = 5
+
+[users]
+# The characters allowed in usernames. Must be a valid string to put inside a regex character class in both Python and
+# JavaScript; -, ] and \ have a special meaning and must be escaped to represent theirselves.
+# Note that the frontend currently doesn't provide a sensible error message if this is changed.
+# Leading, trailing and consecutive spaces are always disallowed.
+username.characters = "a-zA-Z0-9_\\- "
+# The minimum and maximum lengths of usernames.
+username.length = { min = 3, max = 32 }
+# A list of regexes that will be disallowed in usernames.
+username.blacklist = []
+
+# How many seconds before a disconnected user is kicked from their game, regardless of game state.
+disconnect_kick_time = 120
+# How many seconds before a disconnected user is forgotten, i.e. the username is freed.
+disconnect_forget_time = 300
+
+[chat]
+# The maximum length of chat messages in characters.
+max_length = 1024
+# A list of regexes that will be disallowed in chat.
+blacklist = []

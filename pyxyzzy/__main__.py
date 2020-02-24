@@ -3,12 +3,16 @@ import sys
 from asyncio import get_event_loop
 from signal import SIGTERM, SIGINT
 
-from websockets import serve
+from pyxyzzy import config
+config.load()
 
-from pyxyzzy.game import GameServer
-from pyxyzzy.server import connection_factory
+from pyxyzzy.config import config
+from pyxyzzy.server import run_server
 
-logging.basicConfig(format="%(asctime)s [%(levelname)s] %(message)s", stream=sys.stderr, level=logging.INFO)
+logging.basicConfig(format="%(asctime)s [%(name)s] %(levelname)s: %(message)s", stream=sys.stderr, level=logging.INFO)
+if config.server.debug:
+    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger("websockets").setLevel(logging.INFO)
 
 loop = get_event_loop()
 stop_server = loop.create_future()
@@ -24,14 +28,7 @@ except NotImplementedError:
     if sys.platform == "win32" and sys.version_info < (3, 8):
         fix_ctrlc()
 
-
-async def run_server():
-    game_server = GameServer()
-    async with serve(connection_factory(game_server), "127.0.0.1", 8080):
-        await stop_server
-
-
-server = loop.create_task(run_server())
+server = loop.create_task(run_server(stop_server))
 try:
     loop.run_until_complete(server)
 except KeyboardInterrupt:
