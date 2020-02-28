@@ -1,0 +1,20 @@
+@mixin nav-bar($class) {
+    #{$class} {
+        font-size: 1.15rem;
+        padding: 0.5rem 0.5rem 0;
+    }
+    #{$class}, #{$class} > div {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+}
+
+@mixin default-nav-bar {
+    @include nav-bar(".nav");
+    .nav {
+        flex-wrap: wrap-reverse;
+        border-bottom: 1px solid #aaa;
+        background: #ddd;
+    }
+}

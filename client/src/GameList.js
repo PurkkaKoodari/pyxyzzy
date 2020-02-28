@@ -10,7 +10,7 @@ const CodeJoinForm = ({ joining, onJoin }) => {
   const config = useContext(ConfigContext)
   const [code, setCode] = useState("")
 
-  const codeValid = code.trim() !== ""
+  const codeValid = code.length === config.game.code.length
 
   const handleCodeChange = (e) => {
     const newCode = e.target.value

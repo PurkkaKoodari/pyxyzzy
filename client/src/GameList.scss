@@ -1,16 +1,9 @@
+@import "_defs.scss";
+
 .game-list {
-    .nav, .nav > div, .public-header, .public-header > div {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-    }
-    .nav, .public-header {
-        font-size: 1.15rem;
-        padding: 0.5rem 0.5rem 0;
-    }
+    @include default-nav-bar;
+    @include nav-bar(".public-header");
     .nav {
-        flex-wrap: wrap-reverse;
-    
         > div {
             flex-wrap: wrap;
             font-size: 1.15rem;
@@ -36,6 +29,9 @@
     .public-header {
         justify-content: space-between;
 
+        h2 {
+            margin-right: 1rem;
+        }
         h2, .filter, .refresh {
             margin-bottom: 0.5rem;
         }

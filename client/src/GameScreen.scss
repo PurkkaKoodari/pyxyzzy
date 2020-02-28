@@ -1,0 +1,25 @@
+@import "_defs.scss";
+
+.in-game {
+    @include default-nav-bar;
+    .nav {
+        > div {
+            padding: 0 0 0.5rem;
+        }
+        .game-info, .user-info {
+            justify-content: flex-end;
+        }
+        .game-info {
+            flex: 1000 0 auto; // grow 1000 times more than .user-info
+        }
+        .user-info {
+            flex: 1 0 auto; // but still allow .user-info to grow
+        }
+        .game-controls, .game-info {
+            margin-right: 1rem;
+        }
+        .user-name, .game-code {
+            margin-right: 0.5rem;
+        }
+    }
+}

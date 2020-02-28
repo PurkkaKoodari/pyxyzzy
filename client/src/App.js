@@ -17,9 +17,6 @@ const App = () => {
   const [user, setUser] = useState(null)
 
   const [game, setGame] = useState(null)
-  const [gameOptions, setGameOptions] = useState(null)
-  const [hand, setHand] = useState([])
-  const [players, setPlayers] = useState([])
   const [chatMessages, setChatMessages] = useState([])
 
   const connectionRef = useRef()
@@ -38,17 +35,21 @@ const App = () => {
   }, [])
 
   const handleUpdate = useCallback((update) => {
-    if ("game" in update) {
-      setGame(update.game)
+    // if we receive game=null, that means we've left the game
+    if ("game" in update && !update.game) {
+      setGame(null)
+      return
     }
-    if ("options" in update) {
-      setGameOptions(update.options)
+    // update only relevant fields of game and avoid unnecessary updates
+    let updated = game
+    for (const field of ["game", "options", "hand", "players"]) {
+      if (field in update) {
+        updated = { ...updated }
+        updated[field] = update[field]
+      }
     }
-    if ("hand" in update) {
-      setHand(update.hand)
-    }
-    if ("players" in update) {
-      setPlayers(update.players)
+    if (updated !== game) {
+      setGame(updated)
     }
   }, [])
 
@@ -61,10 +62,8 @@ const App = () => {
     gameScreen =
       <GameScreen
         connection={connectionRef.current}
-        game={game}
-        gameOptions={gameOptions}
-        hand={hand}
-        players={players} />
+        user={user}
+        game={game} />
   } else if (user) {
     gameScreen = 
       <GameList
