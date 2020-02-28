@@ -262,7 +262,7 @@ class GameConnection:
             password = content.get("password", "")
             if not password:
                 raise GameError("password_required", "a password is required to join the game")
-            if game.options.password != password:
+            if game.options.password.upper() != password.upper():
                 raise GameError("password_incorrect", "incorrect password")
 
         game.add_player(self.user)
