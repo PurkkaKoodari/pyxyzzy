@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useContext } from "react"
 import Modal from "react-modal"
 import { toast } from "react-toastify"
 import "./GameList.scss"
 import Loader from "./Loader"
 import { useMounted, unknownError } from "./utils"
-import config from "./config"
+import ConfigContext from "./ConfigContext"
 
 const CodeJoinForm = ({ joining, onJoin }) => {
+  const config = useContext(ConfigContext)
   const [code, setCode] = useState("")
 
   const codeValid = code.trim() !== ""
@@ -14,7 +15,7 @@ const CodeJoinForm = ({ joining, onJoin }) => {
   const handleCodeChange = (e) => {
     const newCode = e.target.value
       .toUpperCase()
-      .replace(new RegExp(`[^${config.GAME_ID_ALPHABET}]`, "g"), "")
+      .replace(new RegExp(`[^${config.game.code.characters}]`, "g"), "")
     setCode(newCode)
   }
 
@@ -29,7 +30,7 @@ const CodeJoinForm = ({ joining, onJoin }) => {
       <input
         type="text"
         className="game-code"
-        maxLength={config.GAME_ID_LENGTH}
+        maxLength={config.game.code.length}
         placeholder="Code"
         disabled={joining}
         value={code}
@@ -69,8 +70,7 @@ const GameList = ({ connection, user }) => {
         if (!mounted.is) return
         setGames(response.games)
       })
-      .catch(error => {
-        console.error(error)
+      .catch(() => {
         if (!mounted.is) return
         setGames("error")
       })

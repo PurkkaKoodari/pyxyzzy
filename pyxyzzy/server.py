@@ -79,6 +79,7 @@ class GameConnection:
 
     websocket: WebSocketServerProtocol
 
+    handshaked: bool = False
     user: Optional[User] = None
     server: GameServer
 
@@ -101,15 +102,16 @@ class GameConnection:
             if self.user:
                 self.user.disconnected(self)
 
-    async def send_json(self, data: dict):
+    async def send_json(self, data: dict, *, close: bool = False):
         if self.websocket.open:
             await self.websocket.send(json.dumps(data))
+            if close:
+                await self.websocket.close()
 
     async def replaced(self):
         await self.send_json({
             "disconnect": "connected_elsewhere"
-        })
-        await self.websocket.close()
+        }, close=True)
 
     async def _handle_message(self, message: Union[str, bytes]):
         if not isinstance(message, str):
@@ -121,6 +123,21 @@ class GameConnection:
         if not isinstance(parsed, dict):
             raise InvalidRequest("only JSON objects allowed")
 
+        if not self.handshaked:
+            try:
+                if parsed["version"] == config.server.ui_version:
+                    await self.send_json({
+                        "config": config.to_json()
+                    })
+                    self.handshaked = True
+                else:
+                    await self.send_json({
+                        "error": "incorrect_version"
+                    }, close=True)
+                return
+            except KeyError:
+                raise InvalidRequest("invalid handshake")
+
         try:
             action = parsed["action"]
             call_id = parsed["call_id"]
@@ -131,7 +148,7 @@ class GameConnection:
 
         result = self._handle_request(action, call_id, parsed)
 
-        await self.websocket.send(json.dumps(result))
+        await self.send_json(result)
 
     def _handle_request(self, action: str, call_id: Union[str, int, float], content: dict):
         # noinspection PyBroadException

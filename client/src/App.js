@@ -6,11 +6,13 @@ import GameList from "./GameList"
 import GameScreen from "./GameScreen"
 import GameSocket from "./GameSocket"
 import LoginScreen from "./LoginScreen"
+import ConfigContext from "./ConfigContext"
 
 const SERVER_URL = "ws://localhost:8080/ws"
 
 const App = () => {
   const [connectionState, setConnectionState] = useState("connecting")
+  const [config, setConfig] = useState(null)
   const [retryTime, setRetryTime] = useState(0)
   const [user, setUser] = useState(null)
 
@@ -22,11 +24,17 @@ const App = () => {
 
   const connectionRef = useRef()
 
-  const handleConnectionState = useCallback((state) => {
-    setConnectionState(state.connection)
-    if ("reconnectIn" in state) setRetryTime(state.reconnectIn)
-    setUser(state.user)
-    if (!state.user) setGame(null)
+  const handleConnectionState = useCallback((state, reconnectIn) => {
+    setConnectionState(state)
+    setRetryTime(reconnectIn)
+  }, [])
+  const handleConfig = useCallback((config) => {
+    setConfig(config)
+  }, [])
+  const handleUser = useCallback((user) => {
+    setUser(user)
+    // if we get logged out, forget the game
+    if (!user) setGame(null)
   }, [])
 
   const handleUpdate = useCallback((update) => {
@@ -45,22 +53,27 @@ const App = () => {
   }, [])
 
   const handleEvent = useCallback((event) => {
-    console.log(event)
+    
   }, [])
 
-  let gameScreen, connectingScreen = null
+  let gameScreen = null, connectingScreen = null
   if (user && game) {
-    gameScreen = (
-      <GameScreen connection={connectionRef.current} game={game} gameOptions={gameOptions} hand={hand} players={players} />
-    )
+    gameScreen =
+      <GameScreen
+        connection={connectionRef.current}
+        game={game}
+        gameOptions={gameOptions}
+        hand={hand}
+        players={players} />
   } else if (user) {
-    gameScreen = (
-      <GameList connection={connectionRef.current} user={user} />
-    )
-  } else {
-    gameScreen = (
-      <LoginScreen connection={connectionRef.current} />
-    )
+    gameScreen = 
+      <GameList
+        connection={connectionRef.current}
+        user={user} />
+  } else if (config) {
+    gameScreen = 
+      <LoginScreen
+        connection={connectionRef.current} />
   }
   if (connectionState !== "connected") {
     connectingScreen = <ConnectingScreen state={connectionState} retryTime={retryTime} />
@@ -71,7 +84,7 @@ const App = () => {
   }, [connectionState])
 
   return (
-    <>
+    <ConfigContext.Provider value={config}>
       {gameScreen}
       {connectingScreen}
       <GameSocket
@@ -80,8 +93,10 @@ const App = () => {
         connect={true}
         onUpdate={handleUpdate}
         onEvent={handleEvent}
-        onStateChange={handleConnectionState} />
-    </>
+        setState={handleConnectionState}
+        setUser={handleUser}
+        setConfig={handleConfig} />
+    </ConfigContext.Provider>
   )
 }
 

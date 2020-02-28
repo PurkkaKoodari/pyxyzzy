@@ -686,9 +686,12 @@ class Game:
                 player.user.send_message(to_send)
 
     def game_list_json(self):
+        title = self.options.game_title.strip()
+        if not title:
+            title = config.game.title.default.replace("{USER}", self.host.user.name)
         return {
             "code": str(self.code),
-            "title": self.options.game_title,
+            "title": title,
             "players": len(self.players),
             "player_limit": self.options.player_limit,
             "passworded": bool(self.options.password)

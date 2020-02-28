@@ -1,9 +1,11 @@
-import React, { useState } from "react"
+import React, { useState, useContext } from "react"
 import "./LoginScreen.scss"
 import ExternalLink from "./ExternalLink"
 import { useMounted } from "./utils"
+import ConfigContext from "./ConfigContext"
 
 const LoginScreen = ({ connection }) => {
+  const config = useContext(ConfigContext)
   const [loggingIn, setLoggingIn] = useState(false)
   const [name, setName] = useState("")
   const [loginError, setLoginError] = useState(null)
@@ -11,9 +13,9 @@ const LoginScreen = ({ connection }) => {
   const mounted = useMounted()
 
   const nameProblems = []
-  if (name.length < 3)
-    nameProblems.push("Your name must be at least 3 characters.")
-  if (/[^a-zA-Z0-9_\- ]/.test(name))
+  if (name.length < config.users.username.length.min)
+    nameProblems.push(`Your name must be at least ${config.users.username.length.min} characters.`)
+  if (new RegExp(`[^${config.users.username.characters}]`).test(name))
     nameProblems.push("Your name can only contain letters, numbers, dashes, underscores and spaces.")
   if (name.startsWith(" "))
     nameProblems.push("Your name can't start with a space.")
@@ -65,7 +67,7 @@ const LoginScreen = ({ connection }) => {
           id="login-name"
           placeholder="Name"
           disabled={loggingIn}
-          maxLength="32"
+          maxLength={config.users.username.length.max}
           value={name}
           onChange={(e) => setName(e.target.value)} />
         <button type="submit" disabled={!canSubmit}>Play</button>

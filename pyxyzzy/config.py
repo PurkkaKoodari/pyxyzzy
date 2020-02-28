@@ -63,6 +63,7 @@ class ServerConfig(ParseableConfigObject):
     host: str
     port: int = conf_field(min=1, max=65535)
     debug: bool
+    ui_version: str
 
 
 class GameConfig(ParseableConfigObject):

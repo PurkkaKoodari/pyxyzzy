@@ -6,6 +6,8 @@ debug = true
 # The listen address for the game server.
 host = "127.0.0.1"
 port = 8080
+# The UI version. Incremented on both sides when the UI changes, so that cached clients can be detected.
+ui_version = "0.1-a1"
 
 [game]
 # Maximum length for game titles.

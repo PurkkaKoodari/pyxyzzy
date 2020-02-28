@@ -13,6 +13,5 @@ export const useMounted = () => {
 }
 
 export const unknownError = (error) => {
-    console.error(error)
     toast.error("An unknown error occurred.")
 }
