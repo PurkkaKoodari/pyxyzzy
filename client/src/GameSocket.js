@@ -170,7 +170,7 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, setState, setUser, setC
         delete state.ongoing[data.call_id]
       } else {
         if ("events" in data) {
-          for (const event in data.events) {
+          for (const event of data.events) {
             log.debug("EVENT", event)
             onEvent(event)
           }
