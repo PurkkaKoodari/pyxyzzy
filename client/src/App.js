@@ -6,7 +6,7 @@ import GameList from "./GameList"
 import GameScreen from "./GameScreen"
 import GameSocket from "./GameSocket"
 import LoginScreen from "./LoginScreen"
-import ConfigContext from "./ConfigContext"
+import { ConfigContext, ConnectionContext, UserContext } from "./contexts"
 
 const SERVER_URL = "ws://localhost:8080/ws"
 
@@ -59,20 +59,11 @@ const App = () => {
 
   let gameScreen = null, connectingScreen = null
   if (user && game) {
-    gameScreen =
-      <GameScreen
-        connection={connectionRef.current}
-        user={user}
-        game={game} />
+    gameScreen = <GameScreen game={game} />
   } else if (user) {
-    gameScreen = 
-      <GameList
-        connection={connectionRef.current}
-        user={user} />
+    gameScreen = <GameList />
   } else if (config) {
-    gameScreen = 
-      <LoginScreen
-        connection={connectionRef.current} />
+    gameScreen = <LoginScreen />
   }
   if (connectionState !== "connected") {
     connectingScreen = <ConnectingScreen state={connectionState} retryTime={retryTime} />
@@ -84,17 +75,21 @@ const App = () => {
 
   return (
     <ConfigContext.Provider value={config}>
-      {gameScreen}
-      {connectingScreen}
-      <GameSocket
-        ref={connectionRef}
-        url={SERVER_URL}
-        connect={true}
-        onUpdate={handleUpdate}
-        onEvent={handleEvent}
-        setState={handleConnectionState}
-        setUser={handleUser}
-        setConfig={handleConfig} />
+      <ConnectionContext.Provider value={connectionRef.current}>
+        <UserContext.Provider value={user}>
+          {gameScreen}
+          {connectingScreen}
+          <GameSocket
+            ref={connectionRef}
+            url={SERVER_URL}
+            connect={true}
+            onUpdate={handleUpdate}
+            onEvent={handleEvent}
+            setState={handleConnectionState}
+            setUser={handleUser}
+            setConfig={handleConfig} />
+        </UserContext.Provider>
+      </ConnectionContext.Provider>
     </ConfigContext.Provider>
   )
 }

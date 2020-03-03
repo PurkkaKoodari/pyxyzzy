@@ -2,10 +2,11 @@ import React, { useState, useContext } from "react"
 import "./LoginScreen.scss"
 import ExternalLink from "./ExternalLink"
 import { useMounted } from "./utils"
-import ConfigContext from "./ConfigContext"
+import { ConfigContext, ConnectionContext } from "./contexts"
 
-const LoginScreen = ({ connection }) => {
+const LoginScreen = () => {
   const config = useContext(ConfigContext)
+  const connection = useContext(ConnectionContext)
   const [loggingIn, setLoggingIn] = useState(false)
   const [name, setName] = useState("")
   const [loginError, setLoginError] = useState(null)

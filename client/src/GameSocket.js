@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
 import log from "loglevel"
+import { uniqueId } from "./utils"
 
 const UI_VERSION = "0.1-a1"
 
@@ -62,7 +63,6 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, setState, setUser, setC
     closing: false,
     reconnectTimeout: -1,
     connectAttempts: 0,
-    next: 0,
     ongoing: {},
     session: false,
   }).current
@@ -237,7 +237,7 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, setState, setUser, setC
 
   const doCall = (action, data = {}, persistent = false) => {
     return new Promise((resolve, reject) => {
-      const call_id = state.next++
+      const call_id = uniqueId()
       const request = {
         action,
         call_id,

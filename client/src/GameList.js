@@ -4,7 +4,7 @@ import { toast } from "react-toastify"
 import "./GameList.scss"
 import Loader from "./Loader"
 import { useMounted, unknownError } from "./utils"
-import ConfigContext from "./ConfigContext"
+import { ConfigContext, UserContext, ConnectionContext } from "./contexts"
 
 const CodeJoinForm = ({ joining, onJoin }) => {
   const config = useContext(ConfigContext)
@@ -52,7 +52,7 @@ const GameCard = ({ game, joining, onJoin }) => {
   )
 }
 
-const GameList = ({ connection, user }) => {
+const GameList = () => {
   const [games, setGames] = useState(null)
   const [filter, setFilter] = useState("")
   const [forcedUpdate, setForcedUpdate] = useState(null)
@@ -62,6 +62,8 @@ const GameList = ({ connection, user }) => {
   const [joinModalIncorrect, setJoinModalIncorrect] = useState(false)
 
   const mounted = useMounted()
+  const connection = useContext(ConnectionContext)
+  const user = useContext(UserContext)
 
   useEffect(() => {
     setGames(null)

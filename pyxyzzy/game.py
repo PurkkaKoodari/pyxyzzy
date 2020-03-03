@@ -332,10 +332,10 @@ class Game:
     _round_timer: CallbackTimer
     _update_handle: Optional[Handle] = None
 
-    def __init__(self, server: GameServer, options: GameOptions):
+    def __init__(self, server: GameServer):
         self.code = server.generate_game_code()
         self.server = server
-        self.options = options
+        self.options = GameOptions()
         self.rounds = []
         self.players = SearchableList(id=True)
         self._round_timer = CallbackTimer()

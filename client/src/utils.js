@@ -15,3 +15,7 @@ export const useMounted = () => {
 export const unknownError = (error) => {
     toast.error("An unknown error occurred.")
 }
+
+let currentId = 1
+
+export const uniqueId = () => (currentId++)
