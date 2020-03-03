@@ -130,7 +130,7 @@ class GameOptions(ConfigObject):
     password: str = config.game.password.make_options_field()
     card_packs: Tuple[CardPack] = field(default=(), metadata={"to_json": _card_packs_json})
 
-    updateable_ingame = ["game_title", "public", "password"]
+    updateable_ingame = ["game_title", "public", "password", "player_limit"]
 
 
 class User:

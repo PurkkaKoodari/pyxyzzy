@@ -22,4 +22,39 @@
             margin-right: 0.5rem;
         }
     }
+    .options {
+        display: flex;
+        flex-direction: column;
+        padding: 0.5rem;
+
+        .category, .category > div {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+        }
+        .category {
+            margin-bottom: 0.5rem;
+
+            h4 {
+                margin-right: 0.8rem;
+            }
+        }
+        .field {
+            display: flex;
+            align-items: baseline;
+            margin-right: 0.8rem;
+            white-space: nowrap;
+
+            input {
+                margin-left: 0.3rem;
+            }
+            input[type=number] {
+                width: 5ch;
+                box-sizing: content-box;
+            }
+            input[type=checkbox] {
+                align-self: baseline;
+            }
+        }
+    }
 }
