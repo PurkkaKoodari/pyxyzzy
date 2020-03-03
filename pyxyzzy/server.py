@@ -13,7 +13,8 @@ from websockets import WebSocketServerProtocol, ConnectionClosed, serve
 
 from pyxyzzy.config import config
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
-from pyxyzzy.game import User, GameServer, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions, RoundID
+from pyxyzzy.game import (User, GameServer, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions, RoundID,
+                          UpdateType)
 from pyxyzzy.utils import FunctionRegistry, ConfigError
 
 LOGGER = getLogger("pyXyzzy")
@@ -301,7 +302,8 @@ class GameConnection:
                     raise InvalidRequest("card pack setting not implemented")
                 changes[field.name] = value
         try:
-            self.user.game.options = replace(self.user.game.options, **changes)
+            new_options = replace(self.user.game.options, **changes)
+            self.user.game.update_options(new_options)
         except ConfigError as ex:
             raise GameError("invalid_options", str(ex)) from None
 

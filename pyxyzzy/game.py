@@ -364,6 +364,10 @@ class Game:
         """Get the player that has been in the game longest."""
         return self.players[0]
 
+    def update_options(self, new_options: GameOptions):
+        self.options = new_options
+        self.send_updates(UpdateType.options)
+
     def add_player(self, user: User):
         if user.game is not None:
             raise InvalidGameState("user_in_game", "user already in game")

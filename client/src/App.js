@@ -16,6 +16,9 @@ const App = () => {
   const [retryTime, setRetryTime] = useState(0)
   const [user, setUser] = useState(null)
 
+  // this is definitely against some rule of React, but sockets are imperative :/
+  const gameRef = useRef(null)
+
   const [game, setGame] = useState(null)
   const [chatMessages, setChatMessages] = useState([])
 
@@ -41,14 +44,17 @@ const App = () => {
       return
     }
     // update only relevant fields of game and avoid unnecessary updates
-    let updated = game
+    let updated = gameRef.current
     for (const field of ["game", "options", "hand", "players"]) {
       if (field in update) {
-        updated = { ...updated }
-        updated[field] = update[field]
+        updated = {
+          ...updated,
+          [field]: update[field]
+        }
       }
     }
     if (updated !== game) {
+      gameRef.current = updated
       setGame(updated)
     }
   }, [])

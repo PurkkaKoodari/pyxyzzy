@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react"
+import React, { useContext, useState, useRef } from "react"
 import "./GameScreen.scss"
 import { useMounted, unknownError, uniqueId } from "./utils"
 import { ConnectionContext, UserContext, ConfigContext } from "./contexts"
@@ -54,18 +54,25 @@ const OptionsInput = ({ game, name, type, label, title, ...attrs }) => {
   const connection = useContext(ConnectionContext)
 
   const [unsaved, setUnsaved] = useState(null)
+  // use a ref because saved made by future renders need to
+  // invalidate the updateIds of this render
+  const updateIdRef = useRef(null)
 
-  const value = unsaved === null ? game.options[name] : unsaved.value
+  const fieldValue = unsaved === null ? game.options[name] : unsaved
 
   const handleChange = (forceSave) => async (e) => {
+    // compute correct type of value
     const { name, type } = e.target
     let value = type === "checkbox" ? e.target.checked : e.target.value
     if (type === "number" && value.trim() !== "") value = +value
-    // update the change in the UI
-    const updateId = uniqueId()
-    setUnsaved({ updateId, value })
     // always validate the data and tell the result to the user
     const valid = e.target.reportValidity()
+    // don't bother saving if there is no change
+    if (unsaved === null && value === fieldValue) return
+    // keep track of when the value has been changed
+    const updateId = updateIdRef.current = uniqueId()
+    // update the change in the UI
+    setUnsaved(value)
     // save editable fields only when leaving, except for number input ticks
     const isNumberTick = type === "number" && e.nativeEvent.inputType === "insertReplacementText"
     if (!forceSave && !isNumberTick) return
@@ -84,16 +91,17 @@ const OptionsInput = ({ game, name, type, label, title, ...attrs }) => {
     }
     // when the save finishes, delete the unsaved value, but only if no more
     // changes have been made while saving this one
-    if (unsaved !== null && updateId === unsaved.updateId) {
+    if (updateId === updateIdRef.current) {
       setUnsaved(null)
+      updateIdRef.current = null
     }
   }
 
   if (type === "checkbox") {
-    attrs["checked"] = value
+    attrs["checked"] = fieldValue
     attrs["onChange"] = handleChange(true)
   } else {
-    attrs["value"] = value
+    attrs["value"] = fieldValue
     attrs["onChange"] = handleChange(false)
     attrs["onBlur"] = handleChange(true)
   }

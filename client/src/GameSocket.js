@@ -175,6 +175,7 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, setState, setUser, setC
             onEvent(event)
           }
         }
+        log.debug("UPDATE", data)
         onUpdate(data)
       }
     })
