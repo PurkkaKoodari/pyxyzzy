@@ -13,7 +13,8 @@ from uuid import UUID, uuid4
 
 from pyxyzzy.config import config
 from pyxyzzy.exceptions import InvalidGameState
-from pyxyzzy.utils import SearchableList, CallbackTimer, single, generate_code
+from pyxyzzy.utils import CallbackTimer, single, generate_code
+from pyxyzzy.utils.searchablelist import SearchableList, IndexType
 from pyxyzzy.utils.config import ConfigObject
 
 if TYPE_CHECKING:
@@ -705,10 +706,12 @@ class Game:
 class GameServer:
     games: SearchableList[Game]
     users: SearchableList[User]
+    card_packs: SearchableList[CardPack]
 
     def __init__(self):
-        self.games = SearchableList(code=True)
-        self.users = SearchableList(id=True, name=lambda user: user.name.lower())
+        self.games = SearchableList(code=IndexType.NOT_NONE)
+        self.users = SearchableList(id=IndexType.NOT_NONE, name=lambda user: user.name.lower())
+        self.card_packs = SearchableList(id=IndexType.NOT_NONE)
 
     def generate_game_code(self) -> GameCode:
         while True:
