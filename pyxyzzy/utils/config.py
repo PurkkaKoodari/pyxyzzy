@@ -190,6 +190,9 @@ class ConfigObject:
             if "max_length" in field.metadata and len(value) > field.metadata["max_length"]:
                 raise ConfigError(field.name, f"length of %s must be at most {field.metadata['max_length']}")
 
+            if "one_of" in field.metadata and value not in field.metadata["one_of"]:
+                raise ConfigError(field.name, f"%s must be one of {field.metadata['one_of']}")
+
             try:
                 if "validate" in field.metadata:
                     field.metadata["validate"](value)
