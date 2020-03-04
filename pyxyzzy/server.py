@@ -15,7 +15,8 @@ from pyxyzzy.config import config
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
 from pyxyzzy.game import (User, GameServer, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions, RoundID,
                           UpdateType)
-from pyxyzzy.utils import FunctionRegistry, ConfigError
+from pyxyzzy.utils import FunctionRegistry
+from pyxyzzy.utils.config import ConfigError
 
 LOGGER = getLogger("pyXyzzy")
 

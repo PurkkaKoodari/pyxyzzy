@@ -13,7 +13,8 @@ from uuid import UUID, uuid4
 
 from pyxyzzy.config import config
 from pyxyzzy.exceptions import InvalidGameState
-from pyxyzzy.utils import SearchableList, CallbackTimer, single, ConfigObject, generate_code
+from pyxyzzy.utils import SearchableList, CallbackTimer, single, generate_code
+from pyxyzzy.utils.config import ConfigObject
 
 if TYPE_CHECKING:
     from pyxyzzy.server import GameConnection
@@ -117,7 +118,6 @@ def _card_packs_json(packs: Sequence[CardPack]):
     } for pack in packs]
 
 
-@dataclass(frozen=True)
 class GameOptions(ConfigObject):
     game_title: str = config.game.title.make_options_field()
     public: bool = config.game.public.make_options_field()

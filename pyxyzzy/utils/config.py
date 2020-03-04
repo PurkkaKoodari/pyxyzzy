@@ -1,207 +1,36 @@
-import sys
-from asyncio import Task, create_task, sleep
-from dataclasses import dataclass, fields, field, MISSING
-from operator import attrgetter
-from random import choice
-from typing import (MutableSequence, TypeVar, Union, List, Dict, Hashable, Iterable, Any, Callable, Tuple, Optional,
-                    Sequence, Mapping, get_type_hints)
-
-T = TypeVar("T")
-K = TypeVar("K")
-V = TypeVar("V")
+from collections import abc
+from dataclasses import dataclass, fields, MISSING, field
+from typing import Iterable, Union, Mapping, Optional, get_type_hints
 
 
-class SearchableList(MutableSequence[T]):
-    __data: List[T]
-    __indices: Dict[str, Tuple[Callable[[T], Hashable], Dict[Hashable, T]]]
+def _get_optional_type(type_):
+    """Check if a type is an ``Union`` permitting ``None``.
 
-    def __init__(self, data=(), **indices: Union[Callable[[T], Any], Any]):
-        """Create a new ``SearchableList`` with indices for the given attributes."""
-        # initialize indices
-        self.__indices = {}
-        for name, function in indices.items():
-            function = function if callable(function) else attrgetter(name)
-            self.__indices[name] = (function, {})
-        # add and validate data
-        self.__data = list(data)
-        for item in self.__data:
-            self.__check_add(item)
-            self.__add_to_index(item)
-
-    def __add_to_index(self, item: T):
-        for function, index in self.__indices.values():
-            key = function(item)
-            index[key] = item
-
-    def __drop_from_index(self, item: T):
-        for function, index in self.__indices.values():
-            key = function(item)
-            del index[key]
-
-    def __check_add(self, item: T, to_be_replaced: Any = object()):
-        for name, (function, index) in self.__indices.items():
-            key = function(item)
-            try:
-                indexed_with_key = index[key]
-                if indexed_with_key is not to_be_replaced:
-                    raise ValueError(f"item with same {name} already in list")
-            except KeyError:
-                pass
-
-    def find_by(self, index: str, key: Hashable) -> T:
-        """Find and return the item that has value ``key`` for the index ``index``.
-
-        :raises KeyError: if an item with the given index value does not exist.
-        :raises ValueError: if there is no index for the given attribute.
-        """
-        try:
-            _, index_data = self.__indices[index]
-        except KeyError:
-            raise ValueError(f"no index called {index}") from None
-        try:
-            return index_data[key]
-        except KeyError:
-            raise KeyError(f"no item with that {index}") from None
-
-    def exists(self, index: str, key: Hashable) -> bool:
-        """Check if an item that has value ``key`` for the index ``index`` exists.
-
-        :raises ValueError: if there is no index for the given attribute.
-        """
-        try:
-            self.find_by(index, key)
-        except KeyError:
+    For ``Optional``-like unions permitting only ``None`` and another type, returns the other type. For other
+    ``None``-permitting unions, returns ``True``. For everything else, returns ``False``.
+    """
+    try:
+        # get origin and args, raise AttributeError if missing
+        origin = type_.__origin__
+        args = tuple(type_.__args__)
+        # ensure we're dealing with Optional/Union
+        if origin != Union:
             return False
-        else:
-            return True
-
-    def remove_by(self, attr: str, key: Hashable) -> T:
-        """Remove and return the item whose ``attr`` is equal to ``key``.
-
-        :raises KeyError: if an item with the given attribute value does not exist.
-        :raises ValueError: if there is no index for the given attribute.
-        """
-        item = self.find_by(attr, key)
-        self.remove(item)
-        return item
-
-    def __iter__(self):
-        return iter(self.__data)
-
-    def __reversed__(self):
-        return reversed(self.__data)
-
-    def __contains__(self, item: object):
-        return item in self.__data
-
-    def index(self, x: Any, start: int = 0, end: int = sys.maxsize) -> int:
-        return self.__data.index(x, start, end)
-
-    def count(self, x: Any) -> int:
-        return self.__data.count(x)
-
-    def sort(self, *, key=None, reverse=False):
-        # no need to modify indices
-        self.__data.sort(key=key, reverse=reverse)
-
-    def insert(self, pos: int, item: T) -> None:
-        self.__check_add(item)
-        self.__data.insert(pos, item)
-        self.__add_to_index(item)
-
-    def extend(self, items: Iterable[T]) -> None:
-        # override: check indices first, then add values, to make the operation semi-atomic
-        items = list(items)
-        for item in items:
-            self.__check_add(item)
-        self.__data.extend(items)
-        for item in items:
-            self.__add_to_index(item)
-
-    def clear(self) -> None:
-        # override: just clear the indices
-        for _, index in self.__indices.values():
-            index.clear()
-        self.__data.clear()
-
-    def reverse(self) -> None:
-        # override: no need to modify indices for reversing in-place
-        self.__data.reverse()
-
-    def __getitem__(self, pos: Union[int, slice]) -> T:
-        if not isinstance(pos, int):
-            raise TypeError(f"SearchableList indices must be int, not {type(pos).__name__}")
-        return self.__data[pos]
-
-    def __setitem__(self, pos: int, item: T) -> None:
-        if not isinstance(pos, int):
-            raise TypeError(f"SearchableList indices must be int, not {type(pos).__name__}")
-        to_be_replaced = self.__data[pos]
-        self.__check_add(item, to_be_replaced)
-        self.__drop_from_index(to_be_replaced)
-        self.__data[pos] = item
-        self.__add_to_index(item)
-
-    def __delitem__(self, pos: int) -> None:
-        if not isinstance(pos, int):
-            raise TypeError(f"SearchableList indices must be int, not {type(pos).__name__}")
-        to_be_deleted = self.__data[pos]
-        self.__drop_from_index(to_be_deleted)
-        del self.__data[pos]
-
-    def __len__(self) -> int:
-        return len(self.__data)
-
-
-class CallbackTimer:
-    __task: Optional[Task] = None
-
-    def start(self, time: float, callback: Callable[[], Any]) -> None:
-        self.cancel()
-
-        async def task():
-            await sleep(time)
-            self.cancel()
-            callback()
-
-        self.__task = create_task(task())
-
-    def cancel(self) -> None:
-        if self.__task:
-            self.__task.cancel()
-
-    def is_running(self) -> bool:
-        return self.__task is not None
-
-
-def single(iterable: Iterable[T]) -> T:
-    it = iter(iterable)
-    try:
-        value = next(it)
-    except StopIteration:
-        raise ValueError("expected a single value from iterator, got none")
-    try:
-        next(it)
-        raise ValueError("expected a single value from iterator, got more")
-    except StopIteration:
-        return value
-
-
-class FunctionRegistry(Dict[K, V]):
-    def register(self, key: K) -> Callable[[V], V]:
-        def _decorator(function):
-            if key in self:
-                raise ValueError(f"key {key} already registered")
-            self[key] = function
-            return function
-
-        return _decorator
+        # for Union[Some, None] return Some, raise ValueError if no None
+        none_pos = args.index(type(None))
+        if len(args) == 2:
+            return args[1 - none_pos]
+        # can't return a concrete type
+        return True
+    except (AttributeError, ValueError):
+        return False
 
 
 def _stringify_type(type_or_types):
     if isinstance(type_or_types, Iterable):
         options = list(type_or_types)
         if len(options) == 0:
+            # should never happen, but avoid erroring here
             return "<nonexistent>"
         if len(options) == 1:
             return _stringify_type(options[0])
@@ -251,16 +80,19 @@ def _validate_field_type(name, type_, value):
         args = type_.__args__
     except AttributeError:
         return
-    if issubclass(origin, Sequence):
+    if issubclass(origin, abc.Sequence):
+        value: abc.Sequence
         (item_type, ) = args
         for index, item in enumerate(value):
             _validate_field_type(f"{name}[{index}]", item_type, item)
-    elif issubclass(origin, Mapping):
+    elif issubclass(origin, abc.Mapping):
+        value: abc.Mapping
         key_type, value_type = args
         for key, item in value.items():
             _validate_field_type(f"{name} keys", key_type, key)
             _validate_field_type(f"{name}[{key}]", value_type, item)
-    elif issubclass(origin, Iterable):
+    elif issubclass(origin, abc.Iterable):
+        value: abc.Iterable
         (item_type, ) = args
         for index, item in enumerate(value):
             _validate_field_type(f"{name} items", item_type, item)
@@ -268,6 +100,14 @@ def _validate_field_type(name, type_, value):
 
 @dataclass(frozen=True)
 class ConfigError(Exception):
+    """Validation of a config object failed.
+
+    ``field`` contains the name of the field that caused the error, or ``None`` if the entire config object raising
+    the error is the source.
+
+    ``message`` contains the error message and must contain ``%s`` exactly once, marking the field name.
+    """
+
     field: Optional[str]
     message: str
 
@@ -293,7 +133,7 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class ConfigObject:
-    """A base class for frozen data classes that can automatically validate their fields and can be converted to JSON.
+    """Base class for frozen data classes that can automatically validate their fields and can be converted to JSON.
 
     All fields are validated upon object creation to ensure that their type matches their type annotation. Items of
     generic iterables are validated against the type argument. Unions are also supported and pass validation if any of
@@ -313,7 +153,13 @@ class ConfigObject:
     method. The difference between ``validate_self()`` and ``validate_as_field()`` is that the former is called for all
     instances of the class, while the latter is only called if the object is in another config object's field; only the
     latter receives the validation options defined on the parent object's field.
+
+    Automatically calls ``dataclass(frozen=True)`` on subclasses.
     """
+
+    def __init_subclass__(cls):
+        # allow omitting the boilerplate @dataclass in subclasses
+        dataclass(cls, frozen=True)
 
     def __post_init__(self):
         # Field.type can contain strings; get_type_hints evaluates them
@@ -396,18 +242,18 @@ class ConfigObject:
 class ParseableConfigObject(ConfigObject):
     """Base class for config objects that can be parsed from a ``dict``.
 
-    Automatically calls ``dataclass(frozen=True)`` on subclasses.
+    See the documentation of ``ConfigObject`` and ``from_dict`` for how these objects work.
     """
-    def __init_subclass__(cls):
-        # allow omitting the boilerplate @dataclass in subclasses
-        dataclass(cls, frozen=True)
 
     @classmethod
     def from_dict(cls, data: dict):
         """Parses an instance of this class from the given ``dict``.
 
-        Recursively parses fields whose type is a subclass of ``ParseableConfigObject``. Unions, optionals, iterables
-        and other generic aliases are not recursed into; the type of the field must be the direct class.
+        Recursively parses fields whose type is a subclass of ``ParseableConfigObject``.
+
+        ``Optional`` and ``Union`` fields allowing ``None`` treat missing values as ``None``. ``Optional`` also recurse
+        into ``ParseableConfigObject`` types when used . Other generics, such as ``List[ParseableConfigObject]`` are
+        not recursed into.
         """
         if not isinstance(data, Mapping):
             raise ConfigError(None, "%s must be a table")
@@ -415,13 +261,17 @@ class ParseableConfigObject(ConfigObject):
         field_types = get_type_hints(cls)
         for field in fields(cls):
             field_type = field_types[field.name]
+            optional_type = _get_optional_type(field_type)
             try:
                 value = data[field.name]
             except KeyError:
-                # handle missing keys here
-                raise ConfigError(field.name, "%s not configured")
+                if not optional_type:
+                    raise ConfigError(field.name, "%s missing")
+                value = None
 
             # parse any sub-objects
+            if isinstance(optional_type, type):
+                field_type = optional_type
             if isinstance(field_type, type) and issubclass(field_type, ParseableConfigObject):
                 try:
                     value = field_type.from_dict(value)
@@ -436,7 +286,3 @@ class ParseableConfigObject(ConfigObject):
 def conf_field(default=MISSING, **kwargs):
     """A wrapper for ``dataclasses.field`` that passes all kwargs except for ``default`` to ``metadata``."""
     return field(default=default, metadata=kwargs)
-
-
-def generate_code(alphabet, length):
-    return "".join(choice(alphabet) for _ in range(length))

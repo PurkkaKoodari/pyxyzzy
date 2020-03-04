@@ -13,7 +13,8 @@ from typing import Sequence, Optional
 
 import toml
 
-from pyxyzzy.utils import ConfigError, ParseableConfigObject, conf_field, generate_code
+from pyxyzzy.utils import generate_code
+from pyxyzzy.utils.config import ConfigError, ParseableConfigObject, conf_field
 
 DEFAULT_CONFIG_FILE = "config.toml"
 
