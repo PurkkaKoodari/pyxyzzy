@@ -107,7 +107,7 @@ const OptionsInput = ({ game, name, type, label, title, ...attrs }) => {
   }
 
   return (
-    <div class="field">
+    <div className={`field type-${type}`}>
       <label
         htmlFor={`game-options-${name}`}
         title={title}>{label}</label>
@@ -128,7 +128,7 @@ const GameOptions = ({ game }) => {
 
   return (
     <div className="options">
-      <div class="category joining">
+      <div className="category joining">
         <h4>Joining</h4>
         <div>
           <OptionsInput
@@ -162,7 +162,7 @@ const GameOptions = ({ game }) => {
             title="The maximum number of players in the game." />
         </div>
       </div>
-      <div class="category idle">
+      <div className="category idle">
         <h4>Idle timers</h4>
         <div>
           <OptionsInput
@@ -194,7 +194,7 @@ const GameOptions = ({ game }) => {
             title="The number of consecutive rounds a player must be idle to be kicked." />
         </div>
       </div>
-      <div class="category rules">
+      <div className="category rules">
         <h4>Rules</h4>
         <div>
           <OptionsInput

@@ -15,8 +15,11 @@
         .user-info {
             flex: 1 0 auto; // but still allow .user-info to grow
         }
-        .game-controls, .game-info {
+        .game-controls {
             margin-right: 1rem;
+        }
+        .user-info {
+            margin-left: 1rem;
         }
         .user-name, .game-code {
             margin-right: 0.5rem;
@@ -27,33 +30,60 @@
         flex-direction: column;
         padding: 0.5rem;
 
-        .category, .category > div {
+        .category {
             display: flex;
             align-items: baseline;
-            flex-wrap: wrap;
         }
         .category {
             margin-bottom: 0.5rem;
 
+            > div {
+                display: flex;
+                align-items: baseline;
+                flex-wrap: wrap;
+                flex: 1 1 auto;
+                min-width: 0;
+
+                @media screen and (max-width: 48ch) {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
+            }
             h4 {
-                margin-right: 0.8rem;
+                white-space: nowrap;
             }
         }
         .field {
             display: flex;
             align-items: baseline;
-            margin-right: 0.8rem;
+            padding-left: 0.8rem;
             white-space: nowrap;
+            
+            &.type-text {
+                flex: 0 1 32ch;
+                max-width: 100%;
+
+                @media screen and (max-width: 64ch) {
+                    flex: 1 1 100%;
+                }
+            }
 
             input {
                 margin-left: 0.3rem;
-            }
-            input[type=number] {
-                width: 5ch;
-                box-sizing: content-box;
-            }
-            input[type=checkbox] {
-                align-self: baseline;
+
+                &[type=text] {
+                    flex: 1 1 auto;
+                    min-width: 0;
+                }
+                &[type=number] {
+                    width: 5ch;
+                    box-sizing: content-box;
+                }
+                &[type=checkbox] {
+                    margin-left: 0.4rem;
+                    position: relative;
+                    top: 0.1rem;
+                }
             }
         }
     }
