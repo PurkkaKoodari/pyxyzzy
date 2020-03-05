@@ -55,6 +55,7 @@ class IntOptions(IntLimits):
 
 class GlobalConfig(ParseableConfigObject):
     server: ServerConfig = conf_field(to_json=False)
+    database: DatabaseConfig = conf_field(to_json=False)
     game: GameConfig
     users: UserConfig
     chat: ChatConfig
@@ -65,6 +66,10 @@ class ServerConfig(ParseableConfigObject):
     port: int = conf_field(min=1, max=65535)
     debug: bool
     ui_version: str
+
+
+class DatabaseConfig(ParseableConfigObject):
+    file: str
 
 
 class GameConfig(ParseableConfigObject):

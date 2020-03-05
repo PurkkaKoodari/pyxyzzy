@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import re
+from asyncio import get_event_loop
 from dataclasses import fields, replace
 from functools import wraps
 from json import JSONDecodeError
@@ -12,9 +12,9 @@ from uuid import UUID
 from websockets import WebSocketServerProtocol, ConnectionClosed, serve
 
 from pyxyzzy.config import config
+from pyxyzzy.database import db_connection
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
-from pyxyzzy.game import (User, GameServer, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions, RoundID,
-                          UpdateType)
+from pyxyzzy.game import User, GameServer, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions, RoundID
 from pyxyzzy.utils import FunctionRegistry
 from pyxyzzy.utils.config import ConfigError
 
@@ -71,7 +71,9 @@ def connection_factory(server: GameServer):
 
 
 async def run_server(stop_condition):
+    db_connection.init(config.database.file)
     game_server = GameServer()
+    await get_event_loop().run_in_executor(None, game_server.load_local_packs)
     async with serve(connection_factory(game_server), config.server.host, config.server.port):
         await stop_condition
 

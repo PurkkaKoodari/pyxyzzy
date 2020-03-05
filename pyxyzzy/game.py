@@ -7,15 +7,16 @@ from enum import Enum, auto
 from hashlib import md5
 from os import urandom
 from random import shuffle, choice
-from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Sequence, Dict, Iterable,
-                    TYPE_CHECKING, NewType)
+from typing import (TypeVar, Tuple, Optional, FrozenSet, Generic, List, Set, Sequence, Dict, Iterable, TYPE_CHECKING,
+                    NewType)
 from uuid import UUID, uuid4
 
 from pyxyzzy.config import config
+from pyxyzzy.database import DbCardPack, DbWhiteCard, DbBlackCard, db_connection
 from pyxyzzy.exceptions import InvalidGameState
 from pyxyzzy.utils import CallbackTimer, single, generate_code
-from pyxyzzy.utils.searchablelist import SearchableList, IndexType
 from pyxyzzy.utils.config import ConfigObject
+from pyxyzzy.utils.searchablelist import SearchableList, IndexType
 
 if TYPE_CHECKING:
     from pyxyzzy.server import GameConnection
@@ -111,12 +112,7 @@ class CardPack:
 
 
 def _card_packs_json(packs: Sequence[CardPack]):
-    return [{
-        "id": str(pack.id),
-        "name": pack.name,
-        "white_cards": len(pack.white_cards),
-        "black_cards": len(pack.black_cards)
-    } for pack in packs]
+    return [pack.to_json() for pack in packs]
 
 
 class GameOptions(ConfigObject):
@@ -712,6 +708,23 @@ class GameServer:
         self.games = SearchableList(code=IndexType.NOT_NONE)
         self.users = SearchableList(id=IndexType.NOT_NONE, name=lambda user: user.name.lower())
         self.card_packs = SearchableList(id=IndexType.NOT_NONE)
+
+    def load_local_packs(self):
+        db_pack: DbCardPack
+        db_white: DbWhiteCard
+        db_black: DbBlackCard
+        with db_connection.connection_context():
+            for db_pack in DbCardPack.select():
+                white_cards = []
+                for db_white in db_pack.white_cards:
+                    white_cards.append(WhiteCard(slot_id=db_white.uuid, text=db_white.text))
+                black_cards = []
+                for db_black in db_pack.black_cards:
+                    black_cards.append(BlackCard(text=db_black.text, draw_count=db_black.draw_count,
+                                                 pick_count=db_black.pick_count))
+                pack = CardPack(id=db_pack.uuid, name=db_pack.name, white_cards=frozenset(white_cards),
+                                black_cards=frozenset(black_cards))
+                self.card_packs.append(pack)
 
     def generate_game_code(self) -> GameCode:
         while True:

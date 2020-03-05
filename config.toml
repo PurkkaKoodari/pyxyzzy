@@ -9,6 +9,10 @@ port = 8080
 # The UI version. Incremented on both sides when the UI changes, so that cached clients can be detected.
 ui_version = "0.1-a1"
 
+[database]
+# The SQLite database file name from which local card packs are loaded.
+file = "cards.db"
+
 [game]
 # Maximum length for game titles.
 title.max_length = 32

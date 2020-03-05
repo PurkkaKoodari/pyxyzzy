@@ -16,8 +16,9 @@ Key differences from Pretend You're Xyzzy:
 
 The code for pyXyzzy is licensed under the [MIT license](LICENSE).
 
-pyXyzzy is based on, but not endorsed by, [Cards Against Humanity][cah-official]. The game card data in this repository
-is derived from the official game and licensed under the [CC BY-NC-SA 2.0][cc-by-nc-sa-2.0] license.
+pyXyzzy is based on, but not endorsed by, [Cards Against Humanity][cah-official]. The game card data in
+[pyx.sqlite](pyx.sqlite) and [cards.db](cards.db) is derived from the official game and licensed under the
+[CC BY-NC-SA 2.0][cc-by-nc-sa-2.0] license.
 
 [cah-official]: https://cardsagainsthumanity.com/
 [pyx-github]: https://github.com/ajanata/PretendYoureXyzzy

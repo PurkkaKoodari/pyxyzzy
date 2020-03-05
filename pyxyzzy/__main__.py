@@ -13,6 +13,7 @@ logging.basicConfig(format="%(asctime)s [%(name)s] %(levelname)s: %(message)s", 
 if config.server.debug:
     logging.getLogger().setLevel(logging.DEBUG)
     logging.getLogger("websockets").setLevel(logging.INFO)
+    logging.getLogger("peewee").setLevel(logging.INFO)
 
 loop = get_event_loop()
 stop_server = loop.create_future()

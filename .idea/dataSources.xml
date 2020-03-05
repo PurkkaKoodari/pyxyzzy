@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="pyx.sqlite" read-only="true" uuid="353d1651-681c-4d57-8a2a-0957dbbadf91">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/pyx.sqlite</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="cards.db" uuid="c086c381-ab2d-43c6-aaf7-c4b051f8635d">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/cards.db</jdbc-url>
+    </data-source>
+  </component>
+</project>
