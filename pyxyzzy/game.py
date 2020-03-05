@@ -112,7 +112,7 @@ class CardPack:
 
 
 def _card_packs_json(packs: Sequence[CardPack]):
-    return [pack.to_json() for pack in packs]
+    return [str(pack.id) for pack in packs]
 
 
 class GameOptions(ConfigObject):
@@ -725,6 +725,12 @@ class GameServer:
                 pack = CardPack(id=db_pack.uuid, name=db_pack.name, white_cards=frozenset(white_cards),
                                 black_cards=frozenset(black_cards))
                 self.card_packs.append(pack)
+
+    def config_json(self):
+        return {
+            **config.to_json(),
+            "card_packs": [pack.to_json() for pack in self.card_packs]
+        }
 
     def generate_game_code(self) -> GameCode:
         while True:

@@ -14,7 +14,8 @@ from websockets import WebSocketServerProtocol, ConnectionClosed, serve
 from pyxyzzy.config import config
 from pyxyzzy.database import db_connection
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
-from pyxyzzy.game import User, GameServer, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions, RoundID
+from pyxyzzy.game import (User, GameServer, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions, RoundID,
+                          CardPackID)
 from pyxyzzy.utils import FunctionRegistry
 from pyxyzzy.utils.config import ConfigError
 
@@ -131,7 +132,7 @@ class GameConnection:
             try:
                 if parsed["version"] == config.server.ui_version:
                     await self.send_json({
-                        "config": config.to_json()
+                        "config": self.server.config_json()
                     })
                     self.handshaked = True
                 else:
@@ -302,7 +303,10 @@ class GameConnection:
                     raise InvalidGameState("option_locked", f"{field.name} can't be changed while the game is ongoing")
                 value = content[field.name]
                 if field.name == "card_packs":
-                    raise InvalidRequest("card pack setting not implemented")
+                    try:
+                        value = tuple(self.server.card_packs.find_by("id", CardPackID(UUID(uuid))) for uuid in value)
+                    except (TypeError, ValueError, KeyError):
+                        raise InvalidRequest("invalid card_packs list")
                 changes[field.name] = value
         try:
             new_options = replace(self.user.game.options, **changes)
