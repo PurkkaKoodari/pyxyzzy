@@ -3,6 +3,13 @@
 html {
     font-family: Roboto;
     font-size: 14px;
+
+    @media screen and (max-width: 800px) {
+        font-size: 13px;
+    }
+    @media screen and (max-width: 600px) {
+        font-size: 12px;
+    }
 }
 html, body, #root {
     height: 100%;
