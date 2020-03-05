@@ -76,40 +76,40 @@ class SearchableList(MutableSequence[T]):
         for index in self.__indices.values():
             index.check_add(item, to_be_replaced)
 
-    def find_by(self, index: str, key: Hashable) -> T:
+    def find_by(self, by: str, key: Hashable) -> T:
         """Find and return the item that has value ``key`` for the index ``index``.
 
         :raises KeyError: if an item with the given index value does not exist.
         :raises ValueError: if there is no index for the given attribute.
         """
         try:
-            index = self.__indices[index]
+            index = self.__indices[by]
         except KeyError:
-            raise ValueError(f"no index called {index}") from None
+            raise ValueError(f"no index called {by}") from None
         try:
             return index.data[key]
         except KeyError:
-            raise KeyError(f"no item with that {index}") from None
+            raise KeyError(f"no item with that {index.name}") from None
 
-    def exists(self, index: str, key: Hashable) -> bool:
+    def exists(self, by: str, key: Hashable) -> bool:
         """Check if an item that has value ``key`` for the index ``index`` exists.
 
         :raises ValueError: if there is no index for the given attribute.
         """
         try:
-            self.find_by(index, key)
+            self.find_by(by, key)
         except KeyError:
             return False
         else:
             return True
 
-    def remove_by(self, attr: str, key: Hashable) -> T:
+    def remove_by(self, by: str, key: Hashable) -> T:
         """Remove and return the item whose ``attr`` is equal to ``key``.
 
         :raises KeyError: if an item with the given attribute value does not exist.
         :raises ValueError: if there is no index for the given attribute.
         """
-        item = self.find_by(attr, key)
+        item = self.find_by(by, key)
         self.remove(item)
         return item
 
