@@ -74,7 +74,7 @@ const OptionsInput = ({ game, name, type, ...attrs }) => {
   if (type === "card_packs") {
     const handlePackChange = (packId) => (forceSave) => (e) => {
       // add or remove the pack
-      const newPacks = e.target.checked ? fieldValue.concat(packId) : fieldValue.filter(pack => pack.id !== packId)
+      const newPacks = e.target.checked ? fieldValue.concat(packId) : fieldValue.filter(id => id !== packId)
       doUpdate(forceSave, newPacks)
     }
   
