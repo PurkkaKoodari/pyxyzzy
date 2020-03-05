@@ -53,7 +53,7 @@ const App = () => {
         }
       }
     }
-    if (updated !== game) {
+    if (updated !== gameRef.current) {
       gameRef.current = updated
       setGame(updated)
     }
