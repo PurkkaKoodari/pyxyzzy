@@ -1,64 +1,116 @@
-.in-game .options {
-    display: flex;
-    flex-direction: column;
-    padding: 0.5rem;
+@import "_defs.scss";
 
-    .category {
+$togglerHeight: 1.6rem;
+
+.in-game {
+    .options-container {
         display: flex;
-        align-items: baseline;
-    }
-    .category {
-        margin-bottom: 0.5rem;
+        flex-direction: column;
+        height: $togglerHeight;
 
-        > div {
+        .toggler {
+            padding: 0;
+            outline: none;
+            background: $themeGlobalBg;
+            border: 1px solid #aaa;
+            height: $togglerHeight;
+            text-transform: uppercase;
+
+            &.top {
+                border-width: 0 0 1px;
+                position: relative;
+                z-index: $navbarZ;
+
+                .arrow {
+                    display: inline-block;
+                    transition: transform 0.3s ease, vertical-align 0.3s ease;
+                    transform: translateY(0) rotate(-0deg);
+                }
+            }
+            &.bottom {
+                border-width: 1px 0;
+            }
+        }
+        &.open {
+            .options {
+                transform: translateY(0);
+            }
+            .toggler.top .arrow {
+                transform: translateY(0.2rem) rotate(-60deg);
+            }
+            &.force .toggler {
+                cursor: default;
+
+                &.bottom, &.top .arrow {
+                    display: none;
+                }
+            }
+        }
+    }
+    .options {
+        display: flex;
+        flex-direction: column;
+        transform: translateY(calc(-100%));
+        transition: transform 0.3s ease;
+        background: $themeGlobalBg;
+        position: relative;
+        z-index: $optionsZ;
+
+        .category {
             display: flex;
             align-items: baseline;
-            flex-wrap: wrap;
-            flex: 1 1 auto;
-            min-width: 0;
-
-            @media screen and (max-width: 48ch) {
-                flex-direction: column;
-                align-items: stretch;
-            }
-        }
-        h4 {
-            white-space: nowrap;
-        }
-    }
-    .field {
-        display: flex;
-        align-items: baseline;
-        padding-left: 0.8rem;
-        white-space: nowrap;
-        
-        &.type-text {
-            flex: 0 1 32ch;
-            max-width: 100%;
-
-            @media screen and (max-width: 64ch) {
-                flex: 1 1 100%;
-            }
-        }
-        input {
-            margin: 0 0 0 0.3rem;
-
-            &[type=text] {
+            margin: 0.5rem 0.5rem 0;
+            
+            > div {
+                display: flex;
+                align-items: baseline;
+                flex-wrap: wrap;
                 flex: 1 1 auto;
                 min-width: 0;
+
+                @media screen and (max-width: 48ch) {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
             }
-            &[type=number] {
-                width: 5ch;
-                box-sizing: content-box;
-            }
-            &[type=checkbox] {
-                position: relative;
-                top: 0.1rem;
+            h4 {
+                white-space: nowrap;
             }
         }
-    }
-    .packs .field input[type=checkbox] {
-        margin: 0 0.3rem 0 0;
-        order: -1;
+        .field {
+            display: flex;
+            align-items: baseline;
+            padding-left: 0.8rem;
+            white-space: nowrap;
+            
+            &.type-text {
+                flex: 0 1 32ch;
+                max-width: 100%;
+
+                @media screen and (max-width: 64ch) {
+                    flex: 1 1 100%;
+                }
+            }
+            input {
+                margin: 0 0 0 0.3rem;
+
+                &[type=text] {
+                    flex: 1 1 auto;
+                    min-width: 0;
+                }
+                &[type=number] {
+                    width: 5ch;
+                    box-sizing: content-box;
+                }
+                &[type=checkbox] {
+                    position: relative;
+                    top: 0.1rem;
+                }
+            }
+        }
+        .packs .field input[type=checkbox] {
+            margin: 0 0.3rem 0 0;
+            order: -1;
+        }
     }
 }

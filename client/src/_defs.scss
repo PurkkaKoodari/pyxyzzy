@@ -1,3 +1,12 @@
+$gameZ: 0;
+$optionsZ: 1000;
+$navbarZ: 2000;
+$dialogZ: 3000;
+$connectingZ: 4000;
+
+$themeGlobalBg: white;
+$themeNavbarBg: #ddd;
+
 @mixin nav-bar($class) {
     #{$class} {
         font-size: 1.15rem;
@@ -15,6 +24,8 @@
     .nav {
         flex-wrap: wrap-reverse;
         border-bottom: 1px solid #aaa;
-        background: #ddd;
+        background: $themeNavbarBg;
+        position: relative;
+        z-index: $navbarZ;
     }
 }

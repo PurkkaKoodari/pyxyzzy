@@ -1,8 +1,12 @@
 @import url('https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap&subset=latin-ext');
+@import "_defs.scss";
 
 html {
     font-family: Roboto;
     font-size: 14px;
+    background: $themeGlobalBg;
+    z-index: $gameZ;
+    user-select: none;
 
     @media screen and (max-width: 800px) {
         font-size: 13px;
@@ -25,6 +29,7 @@ html.connecting {
     left: 0;
     bottom: 0;
     right: 0;
+    z-index: $connectingZ;
     background: rgba(0, 0, 0, 0.6);
     color: white;
     display: flex;
@@ -44,5 +49,11 @@ h1 {
     font-size: 2rem;
 }
 h2 {
-    font-size: 1.5rem;;
+    font-size: 1.5rem;
+}
+h3 {
+    font-size: 1.25rem;
+}
+h4 {
+    font-size: 1rem;
 }
