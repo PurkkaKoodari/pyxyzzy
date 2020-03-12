@@ -24,10 +24,20 @@ const GameScreen = ({ game }) => {
     }
   }
 
+  const handleStartStop = async () => {
+    try {
+      await connection.call(game.running ? "stop_game" : "start_game")
+    } catch (error) {
+      unknownError(error)
+    }
+  }
+
   let controls = null
   if (user.id === game.players[0].id) {
     controls = 
-      <button type="button">Start game</button>
+      <button type="button" onClick={handleStartStop}>
+        {game.running ? "Stop game" : "Start game"}
+      </button>
   }
 
   return (
@@ -37,7 +47,7 @@ const GameScreen = ({ game }) => {
           {controls}
         </div>
         <div className="game-info">
-          <div className="game-code">Game <b>{game.game.code}</b></div>
+          <div className="game-code">Game <b>{game.code}</b></div>
           <button type="button" onClick={handleLeave}>Leave game</button>
         </div>
         <div className="user-info">

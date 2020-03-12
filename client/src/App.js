@@ -7,6 +7,7 @@ import GameScreen from "./GameScreen"
 import GameSocket from "./GameSocket"
 import LoginScreen from "./LoginScreen"
 import { ConfigContext, ConnectionContext, UserContext } from "./contexts"
+import GameState from "./state"
 
 const SERVER_URL = "ws://localhost:8080/ws"
 
@@ -55,7 +56,7 @@ const App = () => {
     }
     if (updated !== gameRef.current) {
       gameRef.current = updated
-      setGame(updated)
+      setGame(new GameState(updated))
     }
   }, [])
 

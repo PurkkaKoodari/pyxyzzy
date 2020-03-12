@@ -115,12 +115,10 @@ const GameOptions = ({ game }) => {
 
   const [open, setOpen] = useState(false)
 
-  const forceOpen = game.game.state === "not_started" || game.game.state === "game_ended"
+  const toggleOpen = () => setOpen(!game.running || !open)
+  useEffect(() => setOpen(!game.running), [game.running])
 
-  const toggleOpen = () => setOpen(forceOpen || !open)
-  useEffect(() => setOpen(forceOpen), [forceOpen])
-
-  const openClass = forceOpen ? "force open" : open ? "open" : ""
+  const openClass = !game.running ? "force open" : open ? "open" : ""
   
   const defaultTitle = config.game.title.default.replace(/\{USER\}/g, game.players[0].name)
 
