@@ -201,28 +201,36 @@ class User:
 
 class Deck(Generic[CardT]):
     _deck: List[CardT]
-    _discarded: Set[CardT]
+    _discarded: List[CardT]
 
     def __init__(self):
         self._deck = []
-        self._discarded = set()
+        self._discarded = []
 
     @classmethod
     def build_white(cls, packs: Sequence[CardPack], blanks: int) -> Deck[WhiteCard]:
         """Build a deck of white cards from the given card packs."""
         deck = cls()
+        seen = set()
         for pack in packs:
-            deck._discarded.update(pack.white_cards)
+            for card in pack.white_cards:
+                if card.text not in seen:
+                    deck._discarded.append(card)
+                    seen.add(card.text)
         for _ in range(blanks):
-            deck._discarded.add(WhiteCard.new_blank())
+            deck._discarded.append(WhiteCard.new_blank())
         return deck
 
     @classmethod
     def build_black(cls, packs: Sequence[CardPack]) -> Deck[BlackCard]:
         """Build a deck of black cards from the given card packs."""
         deck = cls()
+        seen = set()
         for pack in packs:
-            deck._discarded.update(pack.black_cards)
+            for card in pack.black_cards:
+                if card.text not in seen:
+                    deck._discarded.append(card)
+                    seen.add(card.text)
         return deck
 
     def draw(self, *, discard=False) -> CardT:
@@ -245,9 +253,9 @@ class Deck(Generic[CardT]):
         If given a blank white card, it is replaced with a new unused one.
         """
         if isinstance(card, WhiteCard) and card.blank:
-            self._discarded.add(WhiteCard.new_blank())
+            self._discarded.append(WhiteCard.new_blank())
         else:
-            self._discarded.add(card)
+            self._discarded.append(card)
 
     def discard_all(self, cards: Iterable[CardT]) -> None:
         """Add all of the given cards to the discard pile."""
