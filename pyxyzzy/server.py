@@ -11,6 +11,7 @@ from uuid import UUID
 
 from websockets import WebSocketServerProtocol, ConnectionClosed, serve
 
+from pyxyzzy import APP_NAME
 from pyxyzzy.config import config
 from pyxyzzy.database import db_connection
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
@@ -19,7 +20,7 @@ from pyxyzzy.game import (User, GameServer, Game, LeaveReason, WhiteCardID, User
 from pyxyzzy.utils import FunctionRegistry
 from pyxyzzy.utils.config import ConfigError
 
-LOGGER = getLogger("pyXyzzy")
+LOGGER = getLogger(APP_NAME)
 
 
 def require_not_ingame(method):

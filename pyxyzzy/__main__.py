@@ -1,10 +1,17 @@
 import logging
 import sys
+from argparse import ArgumentParser
 from asyncio import get_event_loop
 from signal import SIGTERM, SIGINT
 
-from pyxyzzy import config
-config.load()
+from pyxyzzy import APP_NAME, MODULE_NAME, config
+
+argparser = ArgumentParser(description=f"Runs the {APP_NAME} server.", prog=f"python -m {MODULE_NAME}")
+argparser.add_argument("config", default=None, nargs="?",
+                       help=f"an alternative configuration file (default: {config.DEFAULT_CONFIG_FILE})")
+args = argparser.parse_args()
+
+config.load(args.config)
 
 from pyxyzzy.config import config
 from pyxyzzy.server import run_server
@@ -12,6 +19,7 @@ from pyxyzzy.server import run_server
 logging.basicConfig(format="%(asctime)s [%(name)s] %(levelname)s: %(message)s", stream=sys.stderr, level=logging.INFO)
 if config.server.debug:
     logging.getLogger().setLevel(logging.DEBUG)
+    # mute noisy library debug outputs
     logging.getLogger("websockets").setLevel(logging.INFO)
     logging.getLogger("peewee").setLevel(logging.INFO)
 

@@ -172,10 +172,12 @@ class ChatConfig(ParseableConfigObject):
 config: Optional[GlobalConfig] = None
 
 
-def load(file=None):
+def load(file=None, reload=False):
     global config
     if file is None:
         file = DEFAULT_CONFIG_FILE
+    if config is not None and not reload:
+        raise RuntimeError("attempting to load config while it is already loaded")
     with open(file) as stream:
         toml_data = toml.load(stream)
     config = GlobalConfig.from_dict(toml_data)
