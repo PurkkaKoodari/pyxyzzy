@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from abc import ABC, abstractmethod
 from asyncio import get_event_loop
 from dataclasses import fields, replace
 from functools import wraps
@@ -11,7 +12,8 @@ from uuid import UUID
 
 from websockets import WebSocketServerProtocol, ConnectionClosed, serve
 
-from pyxyzzy import APP_NAME
+from pyxyzzy import APP_NAME, UI_VERSION
+from pyxyzzy.api import ApiAction
 from pyxyzzy.config import config
 from pyxyzzy.database import db_connection
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
@@ -67,7 +69,7 @@ def require_host(method):
 
 def connection_factory(server: GameServer):
     async def handler(websocket: WebSocketServerProtocol, _path: str) -> None:
-        await GameConnection(websocket, server).handler()
+        await WebSocketGameConnection(websocket, server).handler()
 
     return handler
 
@@ -80,42 +82,25 @@ async def run_server(stop_condition):
         await stop_condition
 
 
-class GameConnection:
-    handlers: FunctionRegistry[str, Callable[[GameConnection, dict], Optional[dict]]] = FunctionRegistry()
+class GameConnection(ABC):
+    handlers: FunctionRegistry[ApiAction, Callable[[GameConnection, dict], Optional[dict]]] = FunctionRegistry()
 
-    websocket: WebSocketServerProtocol
+    remote_addr: str
 
     handshaked: bool = False
     user: Optional[User] = None
     server: GameServer
 
-    def __init__(self, websocket: WebSocketServerProtocol, server: GameServer):
-        self.websocket = websocket
+    def __init__(self, server: GameServer, remote_addr: str):
         self.server = server
+        self.remote_addr = remote_addr
 
-    async def handler(self):
-        LOGGER.info("New connection from %s", self.websocket.remote_address)
-        try:
-            async for message in self.websocket:
-                await self._handle_message(message)
-        except InvalidRequest as ex:
-            await self.websocket.close(1003, ex.description)
-        except ConnectionClosed:
-            pass
-        finally:
-            LOGGER.info("Connection closed for %s with code %s",
-                        self.websocket.remote_address, self.websocket.close_code)
-            if self.user:
-                self.user.disconnected(self)
-
-    async def send_json(self, data: dict, *, close: bool = False):
-        if self.websocket.open:
-            await self.websocket.send(json.dumps(data))
-            if close:
-                await self.websocket.close()
+    @abstractmethod
+    async def send_json_to_client(self, data: dict, *, close: bool = False):
+        pass
 
     async def replaced(self):
-        await self.send_json({
+        await self.send_json_to_client({
             "disconnect": "connected_elsewhere"
         }, close=True)
 
@@ -131,13 +116,13 @@ class GameConnection:
 
         if not self.handshaked:
             try:
-                if parsed["version"] == config.server.ui_version:
-                    await self.send_json({
+                if parsed["version"] == UI_VERSION:
+                    await self.send_json_to_client({
                         "config": self.server.config_json()
                     })
                     self.handshaked = True
                 else:
-                    await self.send_json({
+                    await self.send_json_to_client({
                         "error": "incorrect_version"
                     }, close=True)
                 return
@@ -145,21 +130,21 @@ class GameConnection:
                 raise InvalidRequest("invalid handshake")
 
         try:
-            action = parsed["action"]
+            action = ApiAction[parsed["action"]]
             call_id = parsed["call_id"]
         except KeyError:
             raise InvalidRequest("action or call_id missing or invalid")
-        if not isinstance(action, str) or not isinstance(call_id, (str, int, float)):
+        if not isinstance(action, ApiAction) or not isinstance(call_id, (str, int, float)):
             raise InvalidRequest("action or call_id missing or invalid")
 
         result = self._handle_request(action, call_id, parsed)
 
-        await self.send_json(result)
+        await self.send_json_to_client(result)
 
-    def _handle_request(self, action: str, call_id: Union[str, int, float], content: dict):
+    def _handle_request(self, action: ApiAction, call_id: Union[str, int, float], content: dict):
         # noinspection PyBroadException
         try:
-            if not self.user and action != "authenticate":
+            if not self.user and action != ApiAction.authenticate:
                 raise GameError("not_authenticated", "must authenticate first")
 
             try:
@@ -191,7 +176,7 @@ class GameConnection:
                 "description": "internal error"
             }
 
-    @handlers.register("authenticate")
+    @handlers.register(ApiAction.authenticate)
     def _handle_authenticate(self, content: dict):
         if self.user:
             raise GameError("already_authenticated", "already authenticated")
@@ -220,7 +205,7 @@ class GameConnection:
         else:
             raise InvalidRequest("missing id/token or name")
 
-        LOGGER.info("%s authenticated as %s", self.websocket.remote_address, self.user)
+        LOGGER.info("%s authenticated as %s", self.remote_addr, self.user)
         result = {
             "id": str(user.id),
             "token": user.token,
@@ -231,25 +216,25 @@ class GameConnection:
             user.game.send_updates(full_resync=True, to=user.player)
         return result
 
-    @handlers.register("log_out")
+    @handlers.register(ApiAction.log_out)
     def _handle_log_out(self, _: dict):
         self.server.remove_user(self.user, LeaveReason.leave)
         self.user = None
 
-    @handlers.register("game_list")
+    @handlers.register(ApiAction.game_list)
     def _handle_game_list(self, _: dict):
         return {
             "games": [game.game_list_json() for game in self.server.games if game.options.public]
         }
 
-    @handlers.register("create_game")
+    @handlers.register(ApiAction.create_game)
     @require_not_ingame
     def _handle_create_game(self, _: dict):
         game = Game(self.server)
         game.add_player(self.user)
         self.server.add_game(game)
 
-    @handlers.register("join_game")
+    @handlers.register(ApiAction.join_game)
     @require_not_ingame
     def _handle_join_game(self, content: dict):
         try:
@@ -272,12 +257,12 @@ class GameConnection:
 
         game.add_player(self.user)
 
-    @handlers.register("leave_game")
+    @handlers.register(ApiAction.leave_game)
     @require_ingame
     def _handle_leave_game(self, _: dict):
         self.user.game.remove_player(self.user.player, LeaveReason.leave)
 
-    @handlers.register("kick_player")
+    @handlers.register(ApiAction.kick_player)
     @require_host
     def _handle_kick_player(self, content: dict):
         try:
@@ -294,7 +279,7 @@ class GameConnection:
 
         self.user.game.remove_player(player, LeaveReason.host_kick)
 
-    @handlers.register("game_options")
+    @handlers.register(ApiAction.game_options)
     @require_host
     def _handle_game_options(self, content: dict):
         changes = {}
@@ -315,17 +300,17 @@ class GameConnection:
         except ConfigError as ex:
             raise GameError("invalid_options", str(ex)) from None
 
-    @handlers.register("start_game")
+    @handlers.register(ApiAction.start_game)
     @require_host
     def _handle_start_game(self, content: dict):
-        pass  # TODO implement game start
+        self.user.game.start_game()
 
-    @handlers.register("stop_game")
+    @handlers.register(ApiAction.stop_game)
     @require_host
     def _handle_stop_game(self, content: dict):
-        pass  # TODO implement game stop
+        self.user.game.stop_game()
 
-    @handlers.register("play_white")
+    @handlers.register(ApiAction.play_white)
     @require_ingame
     def _handle_play_white(self, content: dict):
         cards: List[Tuple[WhiteCardID, Optional[str]]] = []
@@ -346,7 +331,7 @@ class GameConnection:
 
         self.user.game.play_white_cards(round_id, self.user.player, cards)
 
-    @handlers.register("choose_winner")
+    @handlers.register(ApiAction.choose_winner)
     @require_czar
     def _handle_choose_winner(self, content: dict):
         try:
@@ -360,7 +345,7 @@ class GameConnection:
 
         self.user.game.choose_winner(round_id, winner_id)
 
-    @handlers.register("chat")
+    @handlers.register(ApiAction.chat)
     @require_ingame
     def _handle_chat(self, content: dict):
         # TODO rate limiting, spam blocking, blacklist
@@ -375,3 +360,32 @@ class GameConnection:
             "type": "chat_message",
             "text": text
         })
+
+
+class WebSocketGameConnection(GameConnection):
+    websocket: WebSocketServerProtocol
+
+    def __init__(self, websocket: WebSocketServerProtocol, server: GameServer):
+        GameConnection.__init__(self, server, str(websocket.remote_address))
+        self.websocket = websocket
+
+    async def handler(self):
+        LOGGER.info("New connection from %s", self.remote_addr)
+        try:
+            async for message in self.websocket:
+                await self._handle_message(message)
+        except InvalidRequest as ex:
+            await self.websocket.close(1003, ex.description)
+        except ConnectionClosed:
+            pass
+        finally:
+            LOGGER.info("Connection closed for %s with code %s",
+                        self.remote_addr, self.websocket.close_code)
+            if self.user:
+                self.user.disconnected(self)
+
+    async def send_json_to_client(self, data: dict, *, close: bool = False):
+        if self.websocket.open:
+            await self.websocket.send(json.dumps(data))
+            if close:
+                await self.websocket.close()

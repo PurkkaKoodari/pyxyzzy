@@ -1,13 +1,12 @@
 # This file contains the configuration for the game.
 
-[server]
 # Whether or not to enable various debug features, such as DEBUG level logging.
 debug = true
+
+[server]
 # The listen address for the game server.
 host = "127.0.0.1"
 port = 8080
-# The UI version. Incremented on both sides when the UI changes, so that cached clients can be detected.
-ui_version = "0.1-a1"
 
 [database]
 # The SQLite database file name from which local card packs are loaded.

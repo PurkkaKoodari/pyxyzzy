@@ -17,7 +17,7 @@ from pyxyzzy.config import config
 from pyxyzzy.server import run_server
 
 logging.basicConfig(format="%(asctime)s [%(name)s] %(levelname)s: %(message)s", stream=sys.stderr, level=logging.INFO)
-if config.server.debug:
+if config.debug:
     logging.getLogger().setLevel(logging.DEBUG)
     # mute noisy library debug outputs
     logging.getLogger("websockets").setLevel(logging.INFO)

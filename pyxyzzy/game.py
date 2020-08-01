@@ -196,7 +196,7 @@ class User:
 
     def send_message(self, message: dict):
         if self.connection:
-            create_task(self.connection.send_json(message))
+            create_task(self.connection.send_json_to_client(message))
 
 
 class Deck(Generic[CardT]):

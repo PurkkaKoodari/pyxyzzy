@@ -54,6 +54,7 @@ class IntOptions(IntLimits):
 
 
 class GlobalConfig(ParseableConfigObject):
+    debug: bool
     server: ServerConfig = conf_field(to_json=False)
     database: DatabaseConfig = conf_field(to_json=False)
     game: GameConfig
@@ -64,8 +65,6 @@ class GlobalConfig(ParseableConfigObject):
 class ServerConfig(ParseableConfigObject):
     host: str
     port: int = conf_field(min=1, max=65535)
-    debug: bool
-    ui_version: str
 
 
 class DatabaseConfig(ParseableConfigObject):
