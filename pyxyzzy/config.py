@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import field
+from random import normalvariate
 from typing import Sequence, Optional
 
 import toml
@@ -65,13 +66,33 @@ class IntOptions(IntLimits):
         return field(default=self.default, metadata={"min": self.min, "max": self.max})
 
 
+class NormalDistributionOptions(ParseableConfigObject):
+    mean: float
+    stddev: float
+
+    def sample(self):
+        return normalvariate(self.mean, self.stddev)
+
+
 class GlobalConfig(ParseableConfigObject):
-    debug: bool
+    debug: DebugConfig
     server: ServerConfig = conf_field(to_json=False)
     database: DatabaseConfig = conf_field(to_json=False)
     game: GameConfig
     users: UserConfig
     chat: ChatConfig
+
+
+class DebugConfig(ParseableConfigObject):
+    enabled: bool
+    bots: BotConfig
+
+
+class BotConfig(ParseableConfigObject):
+    count: int = conf_field(min=0, max=1000)
+    game_size: int = conf_field(min=3)
+    create_games: bool
+    play_speed: NormalDistributionOptions
 
 
 class ServerConfig(ParseableConfigObject):

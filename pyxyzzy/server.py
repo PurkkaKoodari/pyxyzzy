@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from asyncio import get_event_loop
+from asyncio import get_event_loop, create_task
+from asyncio.futures import Future
 from dataclasses import fields, replace
 from functools import wraps
 from json import JSONDecodeError
@@ -74,10 +75,15 @@ def connection_factory(server: GameServer):
     return handler
 
 
-async def run_server(stop_condition):
+async def run_server(stop_condition: Future):
     db_connection.init(config.database.file)
     game_server = GameServer()
     await get_event_loop().run_in_executor(None, game_server.load_local_packs)
+
+    if config.debug.enabled and config.debug.bots.count > 0:
+        from pyxyzzy.test.bot import run_bots
+        create_task(run_bots(game_server, stop_condition))
+
     async with serve(connection_factory(game_server), config.server.host, config.server.port):
         await stop_condition
 

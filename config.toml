@@ -1,8 +1,5 @@
 # This file contains the configuration for the game.
 
-# Whether or not to enable various debug features, such as DEBUG level logging.
-debug = true
-
 [server]
 # The listen address for the game server.
 host = "127.0.0.1"
@@ -80,3 +77,16 @@ disconnect_forget_time = 300
 max_length = 1024
 # A list of regexes that will be disallowed in chat.
 blacklist = []
+
+[debug]
+# Whether or not to enable various debug features, such as DEBUG level logging.
+enabled = true
+# How many bots to keep running. Bots join random public games and play randomly.
+bots.count = 20
+# How many players the bots will target to have per game. If all games are near this limit, bots may opt to create new
+# games.
+bots.game_size = 5
+# Whether or not bots will create games or just wait for humans to create ones.
+bots.create_games = true
+# Parameters for the normal distribution that determines the time bots take to play.
+bots.play_speed = { mean = 5.0, stddev = 2.0 }
