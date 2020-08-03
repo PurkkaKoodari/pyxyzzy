@@ -29,6 +29,8 @@ password.characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 public.default = false
 # Whether or not games can be made public.
 public.allowed = true
+# Whether or not games must be public.
+public.required = false
 
 # How many seconds before a player is deemed idle and skipped.
 think_time = { default = 60, min = 5, max = 600 }

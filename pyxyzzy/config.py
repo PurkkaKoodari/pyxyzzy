@@ -117,18 +117,25 @@ class GamePasswordConfig(ParseableConfigObject):
 class GamePublicityConfig(ParseableConfigObject):
     default: bool
     allowed: bool
+    required: bool
 
     def validate_self(self):
         super().validate_self()
+        if not self.allowed and self.required:
+            raise ConfigError("required", "%s can't be true if allowed is false")
         if not self.allowed and self.default:
             raise ConfigError("default", "%s can't be true if allowed is false")
+        if self.required and not self.default:
+            raise ConfigError("default", "%s can't be false if required is true")
 
     def make_options_field(self):
         return field(default=self.default, metadata={"validate": self._validate_public})
 
     def _validate_public(self, public):
         if public and not self.allowed:
-            raise ConfigError(None, "public games are disabled")
+            raise ConfigError(None, "%s: public games are disabled")
+        if not public and self.required:
+            raise ConfigError(None, "%s: private games are disabled")
 
 
 class BlankCardConfig(ParseableConfigObject):
