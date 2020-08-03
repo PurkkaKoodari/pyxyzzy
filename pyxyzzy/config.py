@@ -18,7 +18,19 @@ from pyxyzzy.utils.config import ConfigError, ParseableConfigObject, conf_field
 
 DEFAULT_CONFIG_FILE = "config.toml"
 
-# TODO add validation for all blacklists
+
+def _validate_blacklist_syntax(blacklist: Sequence[str]):
+    """Checks if all items in the blacklist are syntactically valid regexes."""
+    for i, pattern in enumerate(blacklist):
+        try:
+            re.compile(pattern, re.IGNORECASE)
+        except re.error:
+            raise ConfigError(None, f"%s item {i + 1} is not a valid regex")
+
+
+def _validate_against_blacklist(string: str, blacklist: Sequence[str]):
+    """Validates a string against a regex blacklist."""
+    return not any(re.search(pattern, string, re.IGNORECASE) for pattern in blacklist)
 
 
 class IntLimits(ParseableConfigObject):
@@ -92,14 +104,16 @@ class GameConfig(ParseableConfigObject):
 class GameTitleConfig(ParseableConfigObject):
     max_length: int = conf_field(min=0)
     default: str
-    blacklist: Sequence[str] = conf_field(to_json=False)
+    blacklist: Sequence[str] = conf_field(to_json=False, validate=_validate_blacklist_syntax)
 
     def make_options_field(self):
         return field(default="", metadata={"max_length": self.max_length, "validate": self._validate_title})
 
-    def _validate_title(self, _title):
-        # TODO validate blacklist
-        return True
+    def _validate_title(self, title: str):
+        # no need to validate length as the field has max_length
+        # TODO: check for bad unicode characters
+        if not _validate_against_blacklist(title, self.blacklist):
+            raise ConfigError(None, "%s: blacklisted words used")
 
 
 class GamePasswordConfig(ParseableConfigObject):
@@ -141,7 +155,14 @@ class GamePublicityConfig(ParseableConfigObject):
 class BlankCardConfig(ParseableConfigObject):
     count: IntOptions = conf_field(min=0)
     max_length: int = conf_field(min=1)
-    blacklist: Sequence[str] = conf_field(to_json=False)
+    blacklist: Sequence[str] = conf_field(to_json=False, validate=_validate_blacklist_syntax)
+
+    def is_valid_text(self, text: str):
+        text = text.strip()
+        if not 1 <= len(text) <= self.max_length:
+            return False
+        # TODO: check for bad unicode characters
+        return _validate_against_blacklist(text, self.blacklist)
 
 
 class GameCodeConfig(ParseableConfigObject):
@@ -158,21 +179,28 @@ class UserConfig(ParseableConfigObject):
 class UsernameConfig(ParseableConfigObject):
     length: IntLimits = conf_field(min=1)
     characters: str = conf_field(min_length=1)
-    blacklist: Sequence[str] = conf_field(to_json=False)
+    blacklist: Sequence[str] = conf_field(to_json=False, validate=_validate_blacklist_syntax)
 
     def is_valid_name(self, username):
         if len(username) not in self.length.as_range():
             return False
+        # TODO: check for bad unicode characters
         bad_regex = r"^ | {2}| $|[^" + self.characters + r"]"
         if re.search(bad_regex, username):
             return False
-        # TODO validate blacklist
-        return True
+        return _validate_against_blacklist(username, self.blacklist)
 
 
 class ChatConfig(ParseableConfigObject):
     max_length: int = conf_field(min=1)
-    blacklist: Sequence[str] = conf_field(to_json=False)
+    blacklist: Sequence[str] = conf_field(to_json=False, validate=_validate_blacklist_syntax)
+
+    def is_valid_message(self, message: str):
+        message = message.strip()
+        if not 1 <= len(message) <= self.max_length:
+            return False
+        # TODO: check for bad unicode characters
+        return _validate_against_blacklist(message, self.blacklist)
 
 
 config: Optional[GlobalConfig] = None
