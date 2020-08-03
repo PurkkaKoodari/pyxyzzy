@@ -1,5 +1,5 @@
 from collections import abc
-from dataclasses import dataclass, fields, MISSING, field
+from dataclasses import dataclass, fields, MISSING, field, Field
 from typing import Iterable, Union, Mapping, Optional, get_type_hints
 
 
@@ -164,7 +164,12 @@ class ConfigObject:
     def __post_init__(self):
         # Field.type can contain strings; get_type_hints evaluates them
         field_types = get_type_hints(self.__class__)
+        field: Field
         for field in fields(self):
+            # don't validate non-initialized fields
+            if not field.init:
+                continue
+
             value = getattr(self, field.name)
             field_type = field_types[field.name]
 
@@ -229,6 +234,7 @@ class ConfigObject:
         method, it is called to convert the value.
         """
         result = {}
+        field: Field
         for field in fields(self):
             value = getattr(self, field.name)
             if "to_json" in field.metadata:
@@ -262,7 +268,10 @@ class ParseableConfigObject(ConfigObject):
             raise ConfigError(None, "%s must be a table")
         values = {}
         field_types = get_type_hints(cls)
+        field: Field
         for field in fields(cls):
+            if not field.init:
+                continue
             field_type = field_types[field.name]
             optional_type = _get_optional_type(field_type)
             try:
