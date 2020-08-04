@@ -18,7 +18,7 @@ from pyxyzzy.exceptions import GameError
 from pyxyzzy.game import GameServer, Game
 from pyxyzzy.server import GameConnection
 
-LOGGER = getLogger("pyXyzzy")
+LOGGER = getLogger(__name__)
 
 
 class BotDisconnected(Exception):

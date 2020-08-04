@@ -23,7 +23,7 @@ from pyxyzzy.game import (User, GameServer, Game, LeaveReason, WhiteCardID, User
 from pyxyzzy.utils import FunctionRegistry
 from pyxyzzy.utils.config import ConfigError
 
-LOGGER = getLogger(APP_NAME)
+LOGGER = getLogger(__name__)
 
 
 def require_not_ingame(method):
