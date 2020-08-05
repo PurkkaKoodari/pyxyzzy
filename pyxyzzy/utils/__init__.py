@@ -1,10 +1,14 @@
 from asyncio import Task, create_task, sleep
-from random import choice
-from typing import TypeVar, Dict, Iterable, Any, Callable, Optional
+from asyncio.exceptions import CancelledError
+from logging import getLogger
+from random import choices
+from typing import TypeVar, Dict, Iterable, Any, Callable, Optional, Awaitable
 
 T = TypeVar("T")
 K = TypeVar("K")
 V = TypeVar("V")
+
+LOGGER = getLogger(__name__)
 
 
 class CallbackTimer:
@@ -29,6 +33,7 @@ class CallbackTimer:
 
 
 def single(iterable: Iterable[T]) -> T:
+    """Ensures that ``iterable`` and only returns one item and returns it."""
     it = iter(iterable)
     try:
         value = next(it)
@@ -53,4 +58,18 @@ class FunctionRegistry(Dict[K, V]):
 
 
 def generate_code(alphabet, length):
-    return "".join(choice(alphabet) for _ in range(length))
+    """Generates a code from the given alphabet."""
+    return "".join(choices(alphabet, k=length))
+
+
+def create_task_log_errors(awaitable: Awaitable):
+    """Wrapper for ``asyncio.create_task()`` that explicitly logs and consumes exceptions from the task."""
+    async def wrapper():
+        try:
+            await awaitable
+        except CancelledError:
+            raise
+        except Exception:
+            LOGGER.error("Exception in task", exc_info=True)
+
+    return create_task(wrapper())

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from asyncio import get_event_loop, Handle, create_task
+from asyncio import get_event_loop, Handle
 from base64 import b64encode
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 from pyxyzzy.config import config
 from pyxyzzy.database import DbCardPack, DbWhiteCard, DbBlackCard, db_connection
 from pyxyzzy.exceptions import InvalidGameState
-from pyxyzzy.utils import CallbackTimer, single, generate_code
+from pyxyzzy.utils import CallbackTimer, single, generate_code, create_task_log_errors
 from pyxyzzy.utils.config import ConfigObject
 from pyxyzzy.utils.searchablelist import SearchableList, IndexType
 
@@ -159,6 +159,10 @@ class User:
         return f"<User name={self.name} id={self.id}>"
 
     def disconnected(self, connection: GameConnection):
+        """Removes the user's connection and starts the timers to kick the user if they don't reconnect on time.
+
+        Called by the connection when it detects a disconnection.
+        """
         if connection is not self.connection:
             return
         self.connection = None
@@ -167,8 +171,9 @@ class User:
             self._disconnect_kick_timer.start(config.users.disconnect_kick_time, self._kick_if_disconnected)
 
     def reconnected(self, connection: GameConnection):
+        """Reattaches the user to a connection and cancels the disconnection kick timers."""
         if self.connection:
-            create_task(self.connection.replaced())
+            create_task_log_errors(self.connection.replaced())
         self.connection = connection
         self._disconnect_kick_timer.cancel()
         self._disconnect_remove_timer.cancel()
@@ -196,7 +201,7 @@ class User:
 
     def send_message(self, message: dict):
         if self.connection:
-            create_task(self.connection.send_json_to_client(message))
+            create_task_log_errors(self.connection.send_json_to_client(message))
 
 
 class Deck(Generic[CardT]):

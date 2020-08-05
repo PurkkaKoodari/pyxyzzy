@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from asyncio import Task, create_task, Queue, Future, sleep, current_task
+from asyncio import Task, Queue, Future, sleep, shield
 from asyncio.events import get_event_loop
 from dataclasses import dataclass
 from logging import getLogger
 from random import randint, choice, sample, Random
-from typing import Dict, Callable, Optional, Tuple, Awaitable, List
+from typing import Dict, Callable, Optional, Tuple, Awaitable, List, Set
 
 from websockets import WebSocketClientProtocol, connect, ConnectionClosed
 
@@ -15,8 +15,9 @@ from pyxyzzy import UI_VERSION
 from pyxyzzy.api import ApiAction
 from pyxyzzy.config import config
 from pyxyzzy.exceptions import GameError
-from pyxyzzy.game import GameServer, Game
+from pyxyzzy.game import GameServer
 from pyxyzzy.server import GameConnection
+from pyxyzzy.utils import create_task_log_errors
 
 LOGGER = getLogger(__name__)
 
@@ -35,7 +36,7 @@ class BotConnection(ABC):
         self.bot = bot
 
     @abstractmethod
-    async def call(self, action: ApiAction, params: dict, persistent: bool = False) -> dict:
+    async def call(self, action: ApiAction, params: dict = {}, persistent: bool = False) -> dict:
         """Performs an API call against the server via this connection."""
         pass
 
@@ -75,6 +76,7 @@ class JsonBotConnection(BotConnection, ABC):
 
     calls: Dict[int, ApiCall]
     next_id: int = 0
+    failed: bool = False
 
     def __init__(self, bot: BotBase):
         super().__init__(bot)
@@ -86,18 +88,24 @@ class JsonBotConnection(BotConnection, ABC):
 
     def receive_json_from_server(self, data: dict):
         """Called by subclasses when they receive a JSON message from the server."""
-        if "call_id" in data:
-            call = self.calls[data["call_id"]]
-            del self.calls[data["call_id"]]
-            if data["error"] is not None:
-                call.future.set_exception(GameError(data["error"], data["description"]))
+        if self.failed:
+            return
+        try:
+            if "call_id" in data:
+                call = self.calls.pop(data["call_id"])
+                if data["error"] is not None:
+                    call.future.set_exception(GameError(data["error"], data["description"]))
+                else:
+                    call.future.set_result(data)
             else:
-                call.future.set_result(data)
-        else:
-            if "events" in data:
-                for event in data["events"]:
-                    self.bot.handle_event(event)
-            self.bot.handle_update(data)
+                if "events" in data:
+                    for event in data["events"]:
+                        self.bot.handle_event(event)
+                self.bot.handle_update(data)
+        except Exception:
+            LOGGER.error("Error handling message from server to bot, closing connection", exc_info=True)
+            self.failed = True
+            create_task_log_errors(self.close())
 
     async def open(self):
         """Opens the connection to the server.
@@ -116,7 +124,7 @@ class JsonBotConnection(BotConnection, ABC):
         The default implementation fails all non-persistent calls with ``BotDisconnected`` errors and calls
         ``bot.disconnected()``.
         """
-        for call_id, call in self.calls.items():
+        for call_id, call in list(self.calls.items()):
             if not call.persistent:
                 del self.calls[call_id]
                 call.future.set_exception(BotDisconnected())
@@ -126,12 +134,13 @@ class JsonBotConnection(BotConnection, ABC):
         self.next_id += 1
         fut = get_event_loop().create_future()
         self.calls[self.next_id] = ApiCall(fut, persistent)
-        await self.send_json_to_server({
+        await shield(self.send_json_to_server({
             "action": action.name,
             "call_id": self.next_id,
             **params
-        })
-        return await fut
+        }))
+        # even if the action causing this call is cancelled, don't cancel the future as it causes errors
+        return await shield(fut)
 
 
 class DirectBotConnection(GameConnection, JsonBotConnection):
@@ -152,7 +161,7 @@ class DirectBotConnection(GameConnection, JsonBotConnection):
     async def _send_dispatcher(self):
         while True:
             message = await self.send_queue.get()
-            await self._handle_message(json.dumps(message))
+            await self.receive_json_from_client(json.dumps(message))
 
     async def _recv_dispatcher(self):
         while True:
@@ -164,13 +173,14 @@ class DirectBotConnection(GameConnection, JsonBotConnection):
 
     async def open(self):
         self.local_addr = f"<direct {id(self)}>"
-        self.send_dispatcher_task = create_task(self._send_dispatcher())
-        self.recv_dispatcher_task = create_task(self._recv_dispatcher())
+        self.send_dispatcher_task = create_task_log_errors(self._send_dispatcher())
+        self.recv_dispatcher_task = create_task_log_errors(self._recv_dispatcher())
         await super().open()
 
     async def close(self):
         self.send_dispatcher_task.cancel()
         self.recv_dispatcher_task.cancel()
+        self.client_disconnected()
         await super().close()
 
     async def send_json_to_client(self, data: dict, *, close: bool = False):
@@ -203,7 +213,7 @@ class WebSocketBotConnection(JsonBotConnection):
         assert "config" in config_response, "connection handshake failed"
         # continue with connection
         await super().open()
-        create_task(self._recv_dispatcher())
+        create_task_log_errors(self._recv_dispatcher())
 
     async def _recv_dispatcher(self):
         try:
@@ -228,8 +238,8 @@ class BotBase:
     connection_factory: ConnFactory
     connection: Optional[BotConnection] = None
     authenticated: bool = False
-    username: Optional[str] = None
     credentials: Optional[Tuple[str, str]] = None
+    username: Optional[str] = None
     player_id: Optional[str] = None
 
     # TODO: handle persistent calls properly or remove them altogether
@@ -238,9 +248,9 @@ class BotBase:
         self.connection_factory = connection_factory
 
     def __str__(self):
-        if self.username is not None:
-            return f"<{type(self).__name__} {self.username}>"
-        return f"<{type(self).__name__} {id(self)} (unconnected)>"
+        if self.authenticated:
+            return f"<{type(self).__name__} {self.username} [{self.player_id}]>"
+        return f"<{type(self).__name__} [unauthenticated {id(self)}]>"
 
     async def connect(self) -> None:
         """Opens a connection from the connection factory."""
@@ -253,9 +263,15 @@ class BotBase:
             await self.disconnect()
 
     async def disconnect(self) -> None:
-        """Closes the bot's connection if one is open."""
-        if self.connection is not None:
-            await self.connection.close()
+        """Logs out if authenticated and closes the bot's connection if one is open."""
+        try:
+            if self.connection and self.authenticated:
+                await self.connection.call(ApiAction.log_out)
+        except GameError:
+            LOGGER.warning("Logging out failed", exc_info=True)
+        finally:
+            if self.connection:
+                await self.connection.close()
 
     def disconnected(self) -> None:
         """Called by the connection when it closes.
@@ -275,18 +291,20 @@ class BotBase:
         self.handle_authenticated()
 
     async def perform_authentication(self) -> None:
-        """Performs authentication.
+        """Performs authentication and sets ``username`` and ``uuid``.
 
         The default algorithm attempts to reconnect if possible and otherwise logs in with a random name. Subclasses
-        may override this method to implement a different algorithm, but make sure to call ``handle_authenticated()``.
+        may override this method to implement a different algorithm.
         """
         # attempt reconnection
         if self.credentials:
             try:
-                await self.connection.call(ApiAction.authenticate, {
+                result = await self.connection.call(ApiAction.authenticate, {
                     "id": self.credentials[0],
                     "token": self.credentials[1]
                 })
+                self.player_id = result["id"]
+                self.username = result["name"]
             except GameError as ex:
                 if ex.code != "user_not_found":
                     raise
@@ -302,6 +320,7 @@ class BotBase:
                 })
                 self.credentials = (result["id"], result["token"])
                 self.player_id = result["id"]
+                self.username = result["name"]
             except GameError as ex:
                 # stop on first error, except for username collisions
                 if ex.code == "name_in_use":
@@ -358,6 +377,7 @@ class RandomPlayBot(BotBase):
 
     # state variables extracted from updates
     game_state: str = "not_in_game"
+    updates_received: Set[str] = set()
 
     is_host: bool
     game_code: str
@@ -389,15 +409,20 @@ class RandomPlayBot(BotBase):
     def _perform_action(self, action: Optional[Awaitable]):
         """Performs a new action, canceling the previous one if any."""
         async def run_action():
-            await action
-            # if the task started another action, don't change state
-            if self.action_task == current_task():
+            try:
+                await action
+            except GameError:
+                LOGGER.error("Performing action failed, quitting bot %s", self, exc_info=True)
+                self.quit()
+                return
+            else:
+                # does not occur if we are cancelled while running
                 self._action = ("acted", None)
 
         if self.action_task:
             self.action_task.cancel()
         if action:
-            task = create_task(run_action())
+            task = create_task_log_errors(run_action())
             self._action = ("acting", task)
         else:
             self._action = ("not_acted", None)
@@ -405,26 +430,25 @@ class RandomPlayBot(BotBase):
     def quit(self):
         self.finished = True
         self._perform_action(None)
-        create_task(self.disconnect())
+        create_task_log_errors(self.disconnect())
 
     def handle_authenticated(self):
-        self._perform_action(self.join_or_create_game())
+        create_task_log_errors(self.join_or_create_game())
 
     def handle_disconnected(self):
         self.quit()
 
     def handle_update(self, update: dict):
-        prev_game_state = self.game_state
-
         if self.finished:
             return
-        if "game" in update and not update["game"]:
-            if self.game_state != "not_in_game":
-                # removed from game by a player, our job here is done
-                self.quit()
-            # ignore updates until we get in a game
+        if "game" in update and not update["game"] and self.game_state != "not_in_game":
+            # removed from game by a player, our job here is done
+            self.quit()
             return
 
+        prev_game_state = self.game_state
+
+        # get information from update and store in instance variables
         if "game" in update:
             self.game_state = update["game"]["state"]
             self.game_code = update["game"]["code"]
@@ -439,8 +463,14 @@ class RandomPlayBot(BotBase):
             self.hand = update["hand"]
         if "players" in update:
             self.players_in_game = len(update["players"])
+            self.is_host = self.players_in_game >= 1 and self.player_id == update["players"][0]["id"]
         if "options" in update:
             self.game_options = update["options"]
+
+        # wait until all info is received before acting
+        self.updates_received.update(update.keys())
+        if not {"game", "players", "options"} <= self.updates_received:
+            return
 
         # cancel remaining actions after any game state changes
         if self.game_state != prev_game_state:
@@ -455,7 +485,12 @@ class RandomPlayBot(BotBase):
         elif self.game_state == "not_started" and self.action_state == "not_acted" and self.is_host:
             target_players = min(_target_game_size(self.game_code), self.game_options["player_limit"])
             if self.players_in_game >= target_players:
+                LOGGER.info("%s starting game %s with %s players (target %s)", self, self.game_code,
+                            self.players_in_game, target_players)
                 self._perform_action(self.start_game())
+            else:
+                LOGGER.debug("%s is the host of game %s, waiting for players %s/%s", self, self.game_code,
+                             self.players_in_game, target_players)
         # schedule playing as player or card czar if necessary
         elif self.game_state == "playing" and self.action_state == "not_acted" and self.player_id != self.card_czar_id:
             self._perform_action(self.play_white())
@@ -463,70 +498,48 @@ class RandomPlayBot(BotBase):
             self._perform_action(self.play_czar())
 
     async def join_or_create_game(self):
-        try:
-            while True:
-                # sleep randomly to avoid race conditions
-                await self.play_sleep()
-                # find and join a game if possible
-                games = await self.connection.call(ApiAction.game_list, {})
-                for game in games["games"]:
-                    target_size = min(_target_game_size(game["code"]), game["player_limit"])
-                    if game["players"] < target_size and not game["passworded"]:
-                        LOGGER.info("%s joining game %s", self, game["code"])
-                        await self.connection.call(ApiAction.join_game, {
-                            "code": game["code"],
-                        })
-                        self.is_host = False
-                        return
-                # create a game if none were found
-                if config.debug.bots.create_games:
-                    LOGGER.info("%s creating new game", self)
-                    await self.connection.call(ApiAction.create_game, {})
-                    await self.connection.call(ApiAction.game_options, {
-                        "public": True,
-                        #  "card_packs": ...,  # TODO choose card packs from server config
+        while True:
+            # sleep randomly to avoid race conditions
+            await self.play_sleep()
+            # find and join a game if possible
+            games = await self.connection.call(ApiAction.game_list)
+            for game in games["games"]:
+                target_size = min(_target_game_size(game["code"]), game["player_limit"])
+                if game["players"] < target_size and not game["passworded"]:
+                    LOGGER.info("%s joining game %s", self, game["code"])
+                    await self.connection.call(ApiAction.join_game, {
+                        "code": game["code"],
                     })
-                    self.is_host = True
                     return
-        except GameError:
-            # in case of errors, just log it, die and let another bot take our place
-            LOGGER.error("Joining game failed, quitting bot", exc_info=True)
-            self.quit()
+            # create a game if none were found
+            if config.debug.bots.create_games:
+                LOGGER.info("%s creating new game", self)
+                await self.connection.call(ApiAction.create_game)
+                await self.connection.call(ApiAction.game_options, {
+                    "public": True,
+                    #  "card_packs": ...,  # TODO choose card packs from server config
+                })
+                return
 
     async def start_game(self):
         await self.play_sleep()
-        try:
-            await self.connection.call(ApiAction.start_game, {})
-        except GameError:
-            LOGGER.error("Starting game failed, quitting bot", exc_info=True)
-            self.quit()
-            return
+        await self.connection.call(ApiAction.start_game)
 
     async def play_white(self):
         await self.play_sleep()
         cards = sample(self.hand, self.pick_count)
-        try:
-            await self.connection.call(ApiAction.play_white, {
-                "round": self.round_id,
-                "cards": [card["id"] for card in cards]
-            })
-        except GameError:
-            LOGGER.error("Playing white cards failed, quitting bot", exc_info=True)
-            self.quit()
-            return
+        await self.connection.call(ApiAction.play_white, {
+            "round": self.round_id,
+            "cards": [card["id"] for card in cards]
+        })
 
     async def play_czar(self):
         await self.play_sleep()
         winner = choice(self.white_cards)[0]["id"]
-        try:
-            await self.connection.call(ApiAction.choose_winner, {
-                "round": self.round_id,
-                "winner": winner
-            })
-        except GameError:
-            LOGGER.error("Choosing winner failed, quitting bot", exc_info=True)
-            self.quit()
-            return
+        await self.connection.call(ApiAction.choose_winner, {
+            "round": self.round_id,
+            "winner": winner
+        })
 
 
 async def run_bots(server: GameServer, stop_condition: Future):
@@ -536,7 +549,7 @@ async def run_bots(server: GameServer, stop_condition: Future):
         new_bot = RandomPlayBot(lambda: DirectBotConnection(server, new_bot))
         LOGGER.info("Starting %s", new_bot)
         running_bots.append(new_bot)
-        create_task(new_bot.connect())
+        create_task_log_errors(new_bot.connect())
         return new_bot
 
     while not stop_condition.done():

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from asyncio import get_event_loop, create_task
+from asyncio import get_event_loop
 from asyncio.futures import Future
 from dataclasses import fields, replace
 from functools import wraps
@@ -13,14 +13,14 @@ from uuid import UUID
 
 from websockets import WebSocketServerProtocol, ConnectionClosed, serve
 
-from pyxyzzy import APP_NAME, UI_VERSION
+from pyxyzzy import UI_VERSION
 from pyxyzzy.api import ApiAction
 from pyxyzzy.config import config
 from pyxyzzy.database import db_connection
 from pyxyzzy.exceptions import InvalidRequest, GameError, InvalidGameState
 from pyxyzzy.game import (User, GameServer, Game, LeaveReason, WhiteCardID, UserID, GameCode, GameOptions, RoundID,
                           CardPackID)
-from pyxyzzy.utils import FunctionRegistry
+from pyxyzzy.utils import FunctionRegistry, create_task_log_errors
 from pyxyzzy.utils.config import ConfigError
 
 LOGGER = getLogger(__name__)
@@ -82,7 +82,7 @@ async def run_server(stop_condition: Future):
 
     if config.debug.enabled and config.debug.bots.count > 0:
         from pyxyzzy.test.bot import run_bots
-        create_task(run_bots(game_server, stop_condition))
+        create_task_log_errors(run_bots(game_server, stop_condition))
 
     async with serve(connection_factory(game_server), config.server.host, config.server.port):
         await stop_condition
@@ -101,16 +101,24 @@ class GameConnection(ABC):
         self.server = server
         self.remote_addr = remote_addr
 
-    @abstractmethod
-    async def send_json_to_client(self, data: dict, *, close: bool = False):
-        pass
+    def client_disconnected(self):
+        """Called by subclasses when the client has disconnected."""
+        LOGGER.info("%s disconnected", self.user or self.remote_addr)
+        if self.user:
+            self.user.disconnected(self)
 
     async def replaced(self):
+        """Informs the client that another connection has been received from this user and disconnects."""
         await self.send_json_to_client({
             "disconnect": "connected_elsewhere"
         }, close=True)
 
-    async def _handle_message(self, message: Union[str, bytes]):
+    @abstractmethod
+    async def send_json_to_client(self, data: dict, *, close: bool = False):
+        """Sends a JSON message to the client."""
+
+    async def receive_json_from_client(self, message: Union[str, bytes]):
+        """Called by subclasses when they receive a JSON message from the client."""
         if not isinstance(message, str):
             raise InvalidRequest("only text JSON messages allowed")
         try:
@@ -308,12 +316,12 @@ class GameConnection(ABC):
 
     @handlers.register(ApiAction.start_game)
     @require_host
-    def _handle_start_game(self, content: dict):
+    def _handle_start_game(self, _: dict):
         self.user.game.start_game()
 
     @handlers.register(ApiAction.stop_game)
     @require_host
-    def _handle_stop_game(self, content: dict):
+    def _handle_stop_game(self, _: dict):
         self.user.game.stop_game()
 
     @handlers.register(ApiAction.play_white)
@@ -329,7 +337,8 @@ class GameConnection(ABC):
             for input_card in input_cards:
                 slot_id = WhiteCardID(UUID(hex=input_card["id"]))
                 text = input_card.get("text")
-                if text is not None and (not isinstance(text, str) or not text.strip()):
+                if text is not None and not (isinstance(text, str) and config.game.blank_cards.is_valid_text(text)):
+                    # TODO graceful handling for disallowed text
                     raise InvalidRequest("invalid cards")
                 cards.append((slot_id, text.strip()))
         except (KeyError, ValueError):
@@ -357,7 +366,8 @@ class GameConnection(ABC):
         # TODO rate limiting, spam blocking, blacklist
         try:
             text = content["text"]
-            if not isinstance(text, str) or not text.strip():
+            if not (isinstance(text, str) and config.chat.is_valid_message(text)):
+                # TODO graceful handling for disallowed text
                 raise InvalidRequest("invalid text")
         except KeyError:
             raise InvalidRequest("invalid text")
@@ -379,7 +389,7 @@ class WebSocketGameConnection(GameConnection):
         LOGGER.info("New connection from %s", self.remote_addr)
         try:
             async for message in self.websocket:
-                await self._handle_message(message)
+                await self.receive_json_from_client(message)
         except InvalidRequest as ex:
             await self.websocket.close(1003, ex.description)
         except ConnectionClosed:
@@ -387,8 +397,7 @@ class WebSocketGameConnection(GameConnection):
         finally:
             LOGGER.info("Connection closed for %s with code %s",
                         self.remote_addr, self.websocket.close_code)
-            if self.user:
-                self.user.disconnected(self)
+            self.client_disconnected()
 
     async def send_json_to_client(self, data: dict, *, close: bool = False):
         if self.websocket.open:
