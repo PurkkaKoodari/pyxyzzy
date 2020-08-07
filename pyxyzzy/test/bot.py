@@ -26,41 +26,6 @@ class BotDisconnected(Exception):
     """Raised on API call futures when the bot disconnects before receiving a response."""
 
 
-class BotConnection(ABC):
-    """Base class for bot connections that provides the API call method."""
-
-    bot: BotBase
-    local_addr: str
-
-    def __init__(self, bot: BotBase) -> None:
-        self.bot = bot
-
-    @abstractmethod
-    async def call(self, action: ApiAction, params: dict = {}, persistent: bool = False) -> dict:
-        """Performs an API call against the server via this connection."""
-        pass
-
-    async def open(self):
-        """Opens the connection to the server.
-
-        The bot will be connected and authenticated when this coroutine completes. ``local_addr`` must be set when this
-        method is called.
-        """
-        LOGGER.info("Opening bot connection %s", self.local_addr)
-
-    async def close(self) -> None:
-        """Closes the connection to the server.
-
-        ``local_addr`` must be set when this method is called.
-        """
-        LOGGER.info("Closed bot connection %s", self.local_addr)
-        self.closed()
-
-    def closed(self) -> None:
-        """Called by subclasses and ``close()`` when the connection is closed."""
-        self.bot.disconnected()
-
-
 @dataclass
 class ApiCall:
     future: Future[dict]
@@ -71,15 +36,18 @@ class ApiCall:
             raise NotImplementedError("Persistent calls are not implemented")
 
 
-class JsonBotConnection(BotConnection, ABC):
+class BotConnection(ABC):
     """Base class for bot connections that use the WebSocket JSON message format."""
 
+    bot: BotBase
+    local_addr: str
+    server_config: dict
     calls: Dict[int, ApiCall]
     next_id: int = 0
     failed: bool = False
 
     def __init__(self, bot: BotBase):
-        super().__init__(bot)
+        self.bot = bot
         self.calls = {}
 
     @abstractmethod
@@ -113,10 +81,20 @@ class JsonBotConnection(BotConnection, ABC):
         The bot will be connected and authenticated when this coroutine completes.
 
         Subclasses should override this method and call the superclass implementation when the underlying channel is
-        ready (i.e. ``send_json_to_server`` can be called). ``local_addr`` must be set when this method is called.
+        ready (i.e. ``send_json_to_server`` can be called). ``local_addr`` and ``server_config`` must be set when this
+        method is called.
         """
         await self.bot.authenticate()
-        await super().open()
+        LOGGER.info("Opening bot connection %s", self.local_addr)
+
+    async def close(self) -> None:
+        """Closes the connection to the server.
+
+        Subclasses should override this method to close their underlying channels. ``local_addr`` must be set when this
+        method is called.
+        """
+        LOGGER.info("Closed bot connection %s", self.local_addr)
+        self.closed()
 
     def closed(self):
         """Called by subclasses if the connection is closed unexpectedly. ``close()`` also calls this.
@@ -128,9 +106,10 @@ class JsonBotConnection(BotConnection, ABC):
             if not call.persistent:
                 del self.calls[call_id]
                 call.future.set_exception(BotDisconnected())
-        super().closed()
+        self.bot.disconnected()
 
     async def call(self, action: ApiAction, params: dict = {}, persistent: bool = False) -> dict:
+        """Performs an API call against the server via this connection."""
         self.next_id += 1
         fut = get_event_loop().create_future()
         self.calls[self.next_id] = ApiCall(fut, persistent)
@@ -143,7 +122,7 @@ class JsonBotConnection(BotConnection, ABC):
         return await shield(fut)
 
 
-class DirectBotConnection(GameConnection, JsonBotConnection):
+class DirectBotConnection(GameConnection, BotConnection):
     """A connection that uses two in-memory queues to emulate a websocket connection."""
 
     recv_dispatcher_task: Task
@@ -153,7 +132,7 @@ class DirectBotConnection(GameConnection, JsonBotConnection):
 
     def __init__(self, server: GameServer, bot: BotBase):
         GameConnection.__init__(self, server, f"<direct {id(self)}>")
-        JsonBotConnection.__init__(self, bot)
+        BotConnection.__init__(self, bot)
         self.send_queue = Queue()
         self.recv_queue = Queue()
         self.handshaked = True
@@ -173,6 +152,7 @@ class DirectBotConnection(GameConnection, JsonBotConnection):
 
     async def open(self):
         self.local_addr = f"<direct {id(self)}>"
+        self.server_config = self.server.config_json()
         self.send_dispatcher_task = create_task_log_errors(self._send_dispatcher())
         self.recv_dispatcher_task = create_task_log_errors(self._recv_dispatcher())
         await super().open()
@@ -189,14 +169,14 @@ class DirectBotConnection(GameConnection, JsonBotConnection):
             await self.close()
 
 
-class WebSocketBotConnection(JsonBotConnection):
+class WebSocketBotConnection(BotConnection):
     """A connection that uses a real websocket for connecting to the server."""
 
     url: str
     connection: WebSocketClientProtocol
 
     def __init__(self, url: str, bot: BotBase):
-        JsonBotConnection.__init__(self, bot)
+        BotConnection.__init__(self, bot)
         self.url = url
 
     async def send_json_to_server(self, data: dict):
@@ -211,6 +191,7 @@ class WebSocketBotConnection(JsonBotConnection):
         })
         config_response = json.loads(await self.connection.recv())
         assert "config" in config_response, "connection handshake failed"
+        self.server_config = config_response["config"]
         # continue with connection
         await super().open()
         create_task_log_errors(self._recv_dispatcher())
@@ -377,6 +358,7 @@ class RandomPlayBot(BotBase):
 
     # state variables extracted from updates
     game_state: str = "not_in_game"
+    game_join_complete: bool = False
     updates_received: Set[str] = set()
 
     is_host: bool
@@ -478,8 +460,13 @@ class RandomPlayBot(BotBase):
             if prev_game_state == "not_in_game":
                 LOGGER.info("%s joined game %s", self, self.game_code)
 
+        # make sure bots only participate in public games
+        if self.game_join_complete and not self.game_options["public"]:
+            LOGGER.info("%s quitting game %s as it is not longer public", self, self.game_code)
+            self.quit()
         # quit if the game ended
-        if self.game_state == "game_ended":
+        elif self.game_state == "game_ended":
+            LOGGER.info("%s quitting finished game %s", self, self.game_code)
             self.quit()
         # start the game if necessary
         elif self.game_state == "not_started" and self.action_state == "not_acted" and self.is_host:
@@ -510,6 +497,7 @@ class RandomPlayBot(BotBase):
                     await self.connection.call(ApiAction.join_game, {
                         "code": game["code"],
                     })
+                    self.game_join_complete = True
                     return
             # create a game if none were found
             if config.debug.bots.create_games:
@@ -517,28 +505,40 @@ class RandomPlayBot(BotBase):
                 await self.connection.call(ApiAction.create_game)
                 await self.connection.call(ApiAction.game_options, {
                     "public": True,
-                    #  "card_packs": ...,  # TODO choose card packs from server config
                 })
+                self.game_join_complete = True
                 return
 
     async def start_game(self):
+        pack_ids = [pack["id"] for pack in self.connection.server_config["card_packs"]]
+        # set card packs right before starting game in case the game was inherited from a stupid human
+        await self.connection.call(ApiAction.game_options, {
+            "card_packs": pack_ids,
+        })
         await self.play_sleep()
         await self.connection.call(ApiAction.start_game)
 
     async def play_white(self):
         await self.play_sleep()
         cards = sample(self.hand, self.pick_count)
+        LOGGER.debug("%s playing cards in game %s: %r", self, self.game_code,
+                     ["<blank card>" if card["blank"] else card["text"] for card in cards])
         await self.connection.call(ApiAction.play_white, {
             "round": self.round_id,
-            "cards": [card["id"] for card in cards]
+            "cards": [{
+                "id": card["id"],
+                "text": "This blank card was played by a bot." if card["blank"] else None,
+            } for card in cards]
         })
 
     async def play_czar(self):
         await self.play_sleep()
-        winner = choice(self.white_cards)[0]["id"]
+        winner = choice(self.white_cards)
+        LOGGER.debug("%s choosing winner in game %s: %r", self, self.game_code, [card["text"] for card in winner])
+        winner_id = winner[0]["id"]
         await self.connection.call(ApiAction.choose_winner, {
             "round": self.round_id,
-            "winner": winner
+            "winner": winner_id,
         })
 
 
