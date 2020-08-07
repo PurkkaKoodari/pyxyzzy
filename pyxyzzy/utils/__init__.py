@@ -2,6 +2,7 @@ from asyncio import Task, create_task, sleep
 from asyncio.exceptions import CancelledError
 from logging import getLogger
 from random import choices
+from traceback import format_stack
 from typing import TypeVar, Dict, Iterable, Any, Callable, Optional, Awaitable
 
 T = TypeVar("T")
@@ -64,6 +65,8 @@ def generate_code(alphabet, length):
 
 def create_task_log_errors(awaitable: Awaitable):
     """Wrapper for ``asyncio.create_task()`` that explicitly logs and consumes exceptions from the task."""
+    stack = "".join(format_stack())
+
     async def wrapper():
         try:
             await awaitable
@@ -71,5 +74,6 @@ def create_task_log_errors(awaitable: Awaitable):
             raise
         except Exception:
             LOGGER.error("Exception in task", exc_info=True)
+            LOGGER.error("Task created at\n%s", stack)
 
     return create_task(wrapper())
