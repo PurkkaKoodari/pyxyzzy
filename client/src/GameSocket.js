@@ -62,6 +62,7 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, setState, setUser, setC
     authenticated: false,
     closing: false,
     reconnectTimeout: -1,
+    reconnectDelay: 0,
     connectAttempts: 0,
     ongoing: {},
     session: false,
@@ -114,9 +115,9 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, setState, setUser, setC
       // update state and schedule a reconnect
       log.debug("connection lost")
       disconnected()
-      let delay = Math.min(MAX_RECONNECT_INTERVAL, INITIAL_RECONNECT_INTERVAL * 2 ** state.connectAttempts)
-      state.reconnectTimeout = setTimeout(doConnect, delay * 1000)
-      setState(state.connectAttempts > 0 ? "retrying" : "reconnecting", delay)
+      state.reconnectDelay = Math.min(MAX_RECONNECT_INTERVAL, INITIAL_RECONNECT_INTERVAL * 2 ** state.connectAttempts)
+      state.reconnectTimeout = setTimeout(reconnectUpdate, Math.min(1000, state.reconnectDelay * 1000))
+      setState(state.connectAttempts > 0 ? "retrying_after" : "reconnecting", state.reconnectDelay)
     })
     ws.addEventListener("message", (e) => {
       // if we are closing the connection, ignore messages
@@ -179,6 +180,17 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, setState, setUser, setC
         onUpdate(data)
       }
     })
+  }
+
+  const reconnectUpdate = () => {
+    state.reconnectDelay -= 1
+    if (state.reconnectDelay <= 0) {
+      setState(state.connectAttempts > 0 ? "retrying" : "reconnecting")
+      doConnect()
+    } else {
+      setState("retrying_after", Math.ceil(state.reconnectDelay))
+      state.reconnectTimeout = setTimeout(reconnectUpdate, Math.min(1000, state.reconnectDelay * 1000))
+    }
   }
 
   const doDisconnect = () => {
