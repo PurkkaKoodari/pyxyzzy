@@ -419,7 +419,7 @@ class Game:
             self.server.remove_game(self)
             return
         # end the game if only 2 players remain
-        if len(self.players) <= 2:
+        if len(self.players) <= 2 and self.game_running:
             self.send_event({
                 "type": "too_few_players"
             })
@@ -471,6 +471,7 @@ class Game:
         if len(self.players) < 3:
             raise InvalidGameState("too_few_players", "too few players")
         # prepare the deck and ensure that there are enough cards
+        # TODO make these errors another type instead of InvalidGameState?
         self._build_decks()
         if self.black_deck.total_cards() == 0:
             raise InvalidGameState("too_few_black_cards", "no black cards in selected packs")
