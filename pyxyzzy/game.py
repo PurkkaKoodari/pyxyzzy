@@ -467,9 +467,11 @@ class Game:
             self.stop_game()
         if self.state != GameState.not_started:
             raise InvalidGameState("game_already_started", "game is already ongoing")
-        # ensure that there are enough players and enough cards to play
+        # ensure that there are enough players
         if len(self.players) < 3:
             raise InvalidGameState("too_few_players", "too few players")
+        # prepare the deck and ensure that there are enough cards
+        self._build_decks()
         if self.black_deck.total_cards() == 0:
             raise InvalidGameState("too_few_black_cards", "no black cards in selected packs")
         if self.white_deck.total_cards() < (config.game.hand_size + 2) * len(self.players):
@@ -678,7 +680,7 @@ class Game:
                             "id": str(self.current_round.id),
                             "black_card": self.current_round.black_card.to_json(),
                             "white_cards": white_cards,
-                            "card_czar": self.current_round.card_czar.id,
+                            "card_czar": str(self.current_round.card_czar.id),
                             "winner": str(self.current_round.winner.id) if self.current_round.winner else None
                         } if self.current_round else None
                     }

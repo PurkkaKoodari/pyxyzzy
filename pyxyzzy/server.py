@@ -335,12 +335,16 @@ class GameConnection(ABC):
         try:
             input_cards = content["cards"]
             for input_card in input_cards:
+                if not isinstance(input_card, dict):
+                    raise InvalidRequest("invalid cards")
                 slot_id = WhiteCardID(UUID(hex=input_card["id"]))
                 text = input_card.get("text")
-                if text is not None and not (isinstance(text, str) and config.game.blank_cards.is_valid_text(text)):
-                    # TODO graceful handling for disallowed text
-                    raise InvalidRequest("invalid cards")
-                cards.append((slot_id, text.strip()))
+                if text is not None:
+                    if not (isinstance(text, str) and config.game.blank_cards.is_valid_text(text)):
+                        # TODO graceful handling for disallowed text
+                        raise InvalidRequest("invalid cards")
+                    text = text.strip()
+                cards.append((slot_id, text))
         except (KeyError, ValueError):
             raise InvalidRequest("invalid cards")
 
