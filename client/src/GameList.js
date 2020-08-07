@@ -138,9 +138,9 @@ const GameList = () => {
         <div className="no-games">{trimmed === "" ? "There are currently no public games." : "No public games match your search."}</div>
       )
     } else {
-      const gameCards = filtered.map(game => <GameCard game={game} joining={joining} onJoin={handleJoinGame} />)
+      const gameCards = filtered.map(game => <GameCard key={game.code} game={game} joining={joining} onJoin={handleJoinGame} />)
       for (let i = 0; i < 12; i++) {
-        gameCards.push(<div className="game-spacer" key={`spacer ${i}`}></div>)
+        gameCards.push(<div className="game-spacer" key={`spacer ${i}`} />)
       }
       gameList = (
         <div className="games">
