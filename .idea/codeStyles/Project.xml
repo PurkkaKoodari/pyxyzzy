@@ -1,0 +1,13 @@
+<component name="ProjectCodeStyleConfiguration">
+  <code_scheme name="Project" version="173">
+    <CssCodeStyleSettings>
+      <option name="BLANK_LINES_AROUND_NESTED_SELECTOR" value="0" />
+    </CssCodeStyleSettings>
+    <SassCodeStyleSettings>
+      <option name="BLANK_LINES_AROUND_NESTED_SELECTOR" value="0" />
+    </SassCodeStyleSettings>
+    <ScssCodeStyleSettings>
+      <option name="BLANK_LINES_AROUND_NESTED_SELECTOR" value="0" />
+    </ScssCodeStyleSettings>
+  </code_scheme>
+</component>
