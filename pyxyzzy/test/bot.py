@@ -465,7 +465,7 @@ class RandomPlayBot(BotBase):
             LOGGER.info("%s quitting game %s as it is not longer public", self, self.game_code)
             self.quit()
         # quit if the game ended
-        elif self.game_state == "game_ended":
+        elif self.game_state == "game_ended" and prev_game_state != "not_in_game":
             LOGGER.info("%s quitting finished game %s", self, self.game_code)
             self.quit()
         # start the game if necessary
