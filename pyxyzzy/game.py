@@ -588,12 +588,14 @@ class Game:
 
     def _judge_idle_timer(self):
         assert self.state == GameState.judging
-        # card czar idle, cancel round
-        self._cancel_round()
         # kick them if they idle too much
         self.card_czar.idle_rounds += 1
         if self.card_czar.idle_rounds >= self.options.idle_rounds:
+            # this will also cancel the round
             self.remove_player(self.card_czar, LeaveReason.idle)
+        else:
+            # card czar idle, cancel round
+            self._cancel_round()
 
     def choose_winner(self, round_id: RoundID, winning_card: WhiteCardID):
         if self.state != GameState.judging:
