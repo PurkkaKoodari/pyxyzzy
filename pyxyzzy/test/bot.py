@@ -505,6 +505,7 @@ class RandomPlayBot(BotBase):
                 await self.connection.call(ApiAction.create_game)
                 await self.connection.call(ApiAction.game_options, {
                     "public": True,
+                    **config.debug.bots.game_options,
                 })
                 self.game_join_complete = True
                 return
@@ -514,6 +515,7 @@ class RandomPlayBot(BotBase):
         # set card packs right before starting game in case the game was inherited from a stupid human
         await self.connection.call(ApiAction.game_options, {
             "card_packs": pack_ids,
+            **config.debug.bots.game_options,
         })
         await self.play_sleep()
         await self.connection.call(ApiAction.start_game)

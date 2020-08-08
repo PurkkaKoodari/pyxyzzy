@@ -90,3 +90,5 @@ bots.game_size = 5
 bots.create_games = true
 # Parameters for the normal distribution that determines the time bots take to play.
 bots.play_speed = { mean = 5.0, stddev = 2.0 }
+# Raw game options that bots will set on games they host.
+bots.game_options = { idle_rounds = 5 }

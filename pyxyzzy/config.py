@@ -93,6 +93,7 @@ class BotConfig(ParseableConfigObject):
     game_size: int = conf_field(min=3)
     create_games: bool
     play_speed: NormalDistributionOptions
+    game_options: dict
 
 
 class ServerConfig(ParseableConfigObject):
