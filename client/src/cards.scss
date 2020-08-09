@@ -1,0 +1,177 @@
+$blackCard: #231f20;
+$whiteCard: #ffffff;
+$hoveredWhiteCard: #f0f1ff;
+$activeWhiteCard: #dae1ff;
+
+$blackCardText: #ffffff;
+$whiteCardText: #231f20;
+$placeholderCardText: #8c92a8;
+$pickedWhiteCardText: #8c92a8;
+
+$cardBorder: #000000;
+
+$whiteCardGroup: #999999;
+$hoveredWhiteCardGroup: #787e99;
+$activeWhiteCardGroup: #536099;
+
+.cards .group {
+    display: flex;
+    margin: 5px 0 0 5px;
+
+    &.multi {
+        background-color: $whiteCardGroup;
+        padding: 0 5px 5px 0;
+
+        &.selected {
+            background-color: $activeWhiteCardGroup !important;
+        }
+    }
+    &.selected .white.card {
+        background-color: $activeWhiteCard !important;
+    }
+}
+.card {
+    border: 1px solid $cardBorder;
+    border-radius: 8px;
+    padding: 9px;
+    width: 200px;
+    height: 200px;
+    position: relative;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+    &.white {
+        background-color: $whiteCard;
+        color: $whiteCardText;
+        margin: 5px 0 0 5px;
+
+        &.picked {
+            color: $pickedWhiteCardText;
+        }
+        &.placeholder {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: $placeholderCardText;
+            cursor: pointer;
+
+            &:hover {
+                background-color: $hoveredWhiteCard;
+            }
+            &.selected {
+                background-color: $activeWhiteCard !important;
+            }
+        }
+        .pack-name {
+            background-image: url("images/card-logo-white.svg");
+        }
+    }
+    &.black {
+        background-color: $blackCard;
+        color: $blackCardText;
+        margin: 10px 0 0 10px;
+
+        .text {
+            display: flex;
+            flex-wrap: wrap;
+            line-height: 1.2;
+            margin-right: -0.6ch;
+
+            .word {
+                display: flex;
+                flex-wrap: nowrap;
+                flex: none;
+                margin-right: 0.6ch;
+
+                &.blank {
+                    flex: 1 0 auto;
+                }
+                .blank {
+                    border-bottom: 2px solid $blackCardText;
+                    flex: 1 0 6ch;
+                    width: 6ch;
+                }
+            }
+        }
+        .pack-name {
+            background-image: url("images/card-logo-black.svg");
+        }
+    }
+    .text {
+        font-size: 18px;
+        font-weight: bold;
+
+        em {
+            font-style: italic;
+        }
+    }
+    .bottom {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        display: flex;
+        align-items: flex-end;
+    }
+    .icon {
+        width: 17px;
+        height: 16px;
+    }
+    .pack-name {
+        flex: 1 1 auto;
+        background-repeat: no-repeat;
+        background-size: contain;
+        background-position: left center;
+        padding-left: 28px;
+        height: 23px;
+        line-height: 25px;
+        font-size: 11px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .draw-pick {
+        text-align: right;
+        font-size: 13px;
+        font-weight: bold;
+        white-space: nowrap;
+        margin-left: 5px;
+
+        > div {
+            margin-top: 2px;
+        }
+        .number {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            background-color: $whiteCard;
+            color: $whiteCardText;
+            font-size: 1.15em;
+            border-radius: 100%;
+            width: 1.33em;
+            height: 1.33em;
+            vertical-align: center;
+        }
+    }
+}
+.in-game.game-state-playing.play-white .cards {
+    .white.card {
+        cursor: grab;
+    }
+    .white.placeholder.card {
+        cursor: pointer;
+    }
+    .white.placeholder.card:hover {
+        background-color: $hoveredWhiteCard;
+    }
+}
+.in-game.game-state-judging.is-czar .cards {
+    .white.card, .group.multi {
+        cursor: pointer;
+    }
+    .group.multi:hover {
+        background-color: $hoveredWhiteCardGroup;
+    }
+    .white.card:hover, .group.multi:hover .white.card {
+        background-color: $hoveredWhiteCard;
+    }
+}

@@ -23,6 +23,13 @@ html.connecting {
     max-height: 100%;
     overflow: hidden;
 }
+#card-size-measurement {
+    display: none;
+    visibility: hidden;
+    position: absolute;
+    left: 0;
+    top: 0;
+}
 .connecting-overlay {
     position: fixed;
     top: 0;
