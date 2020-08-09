@@ -57,12 +57,14 @@ class BlackCard:
     text: str
     pick_count: int
     draw_count: int
+    pack_name: Optional[str] = None
 
     def to_json(self) -> dict:
         return {
             "text": self.text,
             "pick_count": self.pick_count,
-            "draw_count": self.draw_count
+            "draw_count": self.draw_count,
+            "pack_name": self.pack_name,
         }
 
 
@@ -77,6 +79,7 @@ class WhiteCard:
     slot_id: WhiteCardID
     text: Optional[str]
     blank: bool = False
+    pack_name: Optional[str] = None
 
     @classmethod
     def new_blank(cls) -> WhiteCard:
@@ -91,7 +94,8 @@ class WhiteCard:
         return {
             "id": str(self.slot_id),
             "text": self.text,
-            "blank": self.blank
+            "blank": self.blank,
+            "pack_name": self.pack_name,
         }
 
 
@@ -99,15 +103,15 @@ class WhiteCard:
 class CardPack:
     id: CardPackID
     name: str
-    black_cards: FrozenSet[BlackCard, ...]
-    white_cards: FrozenSet[WhiteCard, ...]
+    black_cards: FrozenSet[BlackCard]
+    white_cards: FrozenSet[WhiteCard]
 
     def to_json(self):
         return {
             "id": str(self.id),
             "name": self.name,
             "black_cards": len(self.black_cards),
-            "white_cards": len(self.white_cards)
+            "white_cards": len(self.white_cards),
         }
 
 
@@ -749,11 +753,11 @@ class GameServer:
             for db_pack in DbCardPack.select():
                 white_cards = []
                 for db_white in db_pack.white_cards:
-                    white_cards.append(WhiteCard(slot_id=db_white.uuid, text=db_white.text))
+                    white_cards.append(WhiteCard(slot_id=db_white.uuid, text=db_white.text, pack_name=db_pack.name))
                 black_cards = []
                 for db_black in db_pack.black_cards:
                     black_cards.append(BlackCard(text=db_black.text, draw_count=db_black.draw_count,
-                                                 pick_count=db_black.pick_count))
+                                                 pick_count=db_black.pick_count, pack_name=db_pack.name))
                 pack = CardPack(id=db_pack.uuid, name=db_pack.name, white_cards=frozenset(white_cards),
                                 black_cards=frozenset(black_cards))
                 self.card_packs.append(pack)
