@@ -326,6 +326,12 @@ class Player:
                 return
         raise InvalidGameState("card_not_in_hand", "you do not have the card")
 
+    def to_event_json(self):
+        return {
+            "id": str(self.user.id),
+            "name": self.user.name,
+        }
+
 
 class Game:
     code: GameCode
@@ -395,7 +401,7 @@ class Game:
         # sync state to players
         self.send_event({
             "type": "player_join",
-            "player": player.user.name
+            "player": player.to_event_json(),
         })
         self.send_updates(full_resync=True, to=player)
         self.send_updates(UpdateType.players)
@@ -405,8 +411,8 @@ class Game:
             raise InvalidGameState("user_not_in_game", "user not in game")
         self.send_event({
             "type": "player_leave",
-            "player": player.user.name,
-            "reason": reason.name
+            "player": player.to_event_json(),
+            "reason": reason.name,
         })
         # notify the user object while game state is still valid
         player.user.removed_from_game()
@@ -431,6 +437,11 @@ class Game:
                 "type": "card_czar_leave"
             })
             self._cancel_round()
+        if player == self.host:
+            self.send_event({
+                "type": "host_leave",
+                "new_host": self.players[1].to_event_json(),
+            })
         # discard the player's hand
         self.white_deck.discard_all(player.hand)
         # discard the player's played cards if round not decided yet
@@ -675,7 +686,7 @@ class Game:
                         played_cards = self.current_round.randomize_white_cards()
                         white_cards = [[card.to_json() for card in play_set] for play_set in played_cards]
                     elif self.state == GameState.playing and player.id in self.current_round.white_cards:
-                        white_cards = [card.to_json() for card in self.current_round.white_cards[player.id]]
+                        white_cards = [[card.to_json() for card in self.current_round.white_cards[player.id]]]
                     to_send["game"] = {
                         "code": self.code,
                         "state": self.state.name,
@@ -684,7 +695,10 @@ class Game:
                             "black_card": self.current_round.black_card.to_json(),
                             "white_cards": white_cards,
                             "card_czar": str(self.current_round.card_czar.id),
-                            "winner": str(self.current_round.winner.id) if self.current_round.winner else None
+                            "winner": {
+                                "player": str(self.current_round.winner.id),
+                                "cards": str(self.current_round.white_cards[self.current_round.winner.id][0].slot_id),
+                            } if self.current_round.winner else None
                         } if self.current_round else None
                     }
                 if UpdateType.players in player.pending_updates:
