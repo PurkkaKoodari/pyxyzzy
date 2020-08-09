@@ -41,7 +41,7 @@ def convert_card(text: str, black: bool):
                 if tag == "br":
                     output += "\n"
                     continue
-                if tag not in ("b", "i"):
+                if tag != "i":
                     raise ValueError(f"html tag {token} not allowed")
                 output += "\\"
                 output += tag.lower() if token[1] == "/" else tag.upper()
