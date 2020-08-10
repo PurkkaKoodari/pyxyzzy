@@ -6,7 +6,6 @@ $activeWhiteCard: #dae1ff;
 $blackCardText: #ffffff;
 $whiteCardText: #231f20;
 $placeholderCardText: #8c92a8;
-$pickedWhiteCardText: #8c92a8;
 
 $cardBorder: #000000;
 
@@ -45,7 +44,7 @@ $activeWhiteCardGroup: #536099;
         margin: 5px 0 0 5px;
 
         &.picked {
-            color: $pickedWhiteCardText;
+            opacity: 0.5;
         }
         &.placeholder {
             display: flex;
