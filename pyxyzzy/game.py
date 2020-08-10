@@ -418,6 +418,7 @@ class Game:
             "player": player.to_event_json(),
             "reason": reason.name,
         })
+        was_host = player == self.host
         # notify the user object while game state is still valid
         player.user.removed_from_game()
         # remove the player now so they won't get further messages
@@ -426,6 +427,7 @@ class Game:
         self._send_pending_updates(to=player)
         # nuke the game if no players remain
         if len(self.players) == 0:
+            # TODO: need to cancel tasks or something?
             self.server.remove_game(self)
             return
         # end the game if only 2 players remain
@@ -435,16 +437,19 @@ class Game:
             })
             self.stop_game()
             return
-        # cancel the round if the card czar leaves
-        if player == self.card_czar:
+        # cancel the round if the card czar leaves (but if they idled, this will be handled by _judge_idle_timer)
+        if player == self.card_czar and reason != LeaveReason.idle \
+                and self.state in (GameState.playing, GameState.judging):
             self.send_event({
                 "type": "card_czar_leave"
             })
+            # TODO: check if the side effects of _cancel_round() affect the rest of this function
             self._cancel_round()
-        if player == self.host:
+        if was_host:
             self.send_event({
                 "type": "host_leave",
-                "new_host": self.players[1].to_event_json(),
+                "old_host": player.to_event_json(),
+                "new_host": self.host.to_event_json(),
             })
         # discard the player's hand
         self.white_deck.discard_all(player.hand)
@@ -541,18 +546,25 @@ class Game:
 
     def _play_idle_timer(self):
         assert self.state == GameState.playing
+        # find anyone that is idling
+        idlers = [player for player in self.players if self.current_round.needs_to_play(player)]
+        # notify everyone
+        self.send_event({
+            "type": "players_idle",
+            "players": [player.to_event_json() for player in idlers],
+        })
+        # kick people that idle too long
         to_kick = []
-        for player in self.players:
-            # ignore players that play nice
-            if not self.current_round.needs_to_play(player):
-                continue
-            # kick the lousy idlers
+        for player in idlers:
             player.idle_rounds += 1
             if player.idle_rounds >= self.options.idle_rounds:
                 to_kick.append(player)
         # kick the idle players
         for player in to_kick:
             self.remove_player(player, LeaveReason.idle)
+        # if that ended the game, stop here
+        if not self.game_running:
+            return
         # cancel the round if only 0 or 1 white cards were played
         if len(self.current_round.white_cards) < 2:
             self.send_event({
@@ -603,14 +615,17 @@ class Game:
 
     def _judge_idle_timer(self):
         assert self.state == GameState.judging
+        # notify everyone
+        self.send_event({
+            "type": "card_czar_idle",
+            "player": self.card_czar.to_event_json(),
+        })
+        # card czar idle, cancel round
+        self._cancel_round()
         # kick them if they idle too much
         self.card_czar.idle_rounds += 1
         if self.card_czar.idle_rounds >= self.options.idle_rounds:
-            # this will also cancel the round
             self.remove_player(self.card_czar, LeaveReason.idle)
-        else:
-            # card czar idle, cancel round
-            self._cancel_round()
 
     def choose_winner(self, round_id: RoundID, winning_card: WhiteCardID):
         if self.state != GameState.judging:
@@ -643,6 +658,8 @@ class Game:
         self._start_next_round()
 
     def _cancel_round(self):
+        if self.state == GameState.round_ended:
+            return
         assert self.state in (GameState.playing, GameState.judging)
         # return white cards to hands
         for player_id, cards in self.current_round.white_cards.items():

@@ -9,7 +9,8 @@ import log from "loglevel"
 Modal.setAppElement("#root")
 
 toast.configure({
-    hideProgressBar: true
+    hideProgressBar: true,
+    autoClose: 8000,
 })
 
 if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {

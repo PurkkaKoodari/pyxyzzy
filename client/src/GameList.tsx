@@ -53,7 +53,7 @@ const GameCard = ({ game, joining, onJoin }: { game: GameListGame, joining: bool
   )
 }
 
-const GameList = () => {
+const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
   const [games, setGames] = useState<GameListGame[] | "error" | null>(null)
   const [filter, setFilter] = useState("")
   const [forcedUpdate, setForcedUpdate] = useState<any>(null)

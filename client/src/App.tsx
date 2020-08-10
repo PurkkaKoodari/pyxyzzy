@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React, {useEffect, useState} from "react"
 import "react-toastify/dist/ReactToastify.css"
 import "./App.scss"
 import ConnectingScreen from "./ConnectingScreen"
@@ -6,30 +6,11 @@ import GameList from "./GameList"
 import GameScreen from "./GameScreen"
 import GameSocket from "./GameSocket"
 import LoginScreen from "./LoginScreen"
-import { ConfigContext, ConnectionContext, UserContext } from "./contexts"
+import {ConfigContext, ConnectionContext, EventContext, UserContext} from "./contexts"
 import {GameState, UserSession} from "./state"
+import {GameEventHandler} from "./events"
 
 const SERVER_URL = "ws://localhost:8080/ws"
-
-class EventHandler {
-  chatMessages: any[] = []
-  onChatMessagesChange: any
-
-  constructor(onChatMessagesChange: any) {
-    this.onChatMessagesChange = onChatMessagesChange
-  }
-
-  addChatMessage(message: any) {
-    this.chatMessages.push(message)
-    this.onChatMessagesChange(this.chatMessages)
-  }
-
-  handle(event: any) {
-    switch (event.type) {
-      // TODO
-    }
-  }
-}
 
 const App = () => {
   const [connectionState, setConnectionState] = useState("connect")
@@ -38,25 +19,30 @@ const App = () => {
   const [user, setUser] = useState<UserSession | null>(null)
 
   const [connection, setConnection] = useState<GameSocket | null>(null)
+  const [eventHandler, setEventHandler] = useState<GameEventHandler | null>(null)
   const [game, setGame] = useState<GameState | null>(null)
-  const [chatMessages, setChatMessages] = useState([])
+  const [chatMessages, setChatMessages] = useState<any[]>([])
 
   useEffect(() => {
-    const eventHandler = new EventHandler(setChatMessages)
     const connection = new GameSocket(SERVER_URL)
+    const eventHandler = new GameEventHandler(connection, setChatMessages)
 
     connection.onConnectionStateChange = (state, reconnectIn) => {
       setConnectionState(state)
       setRetryTime(reconnectIn)
     }
     connection.onConfigChange = config => setConfig(config)
-    connection.onSessionChange = user => setUser(user)
+    connection.onSessionChange = user => {
+      setUser(user)
+      eventHandler.user = user
+    }
 
     connection.onGameStateChange = gameState => setGame(gameState)
     connection.onGameEvent = event => eventHandler.handle(event)
 
     connection.connect()
     setConnection(connection)
+    setEventHandler(eventHandler)
 
     return () => connection.disconnect()
   }, [])
@@ -65,7 +51,7 @@ const App = () => {
   if (user && game) {
     gameScreen = <GameScreen game={game} chatMessages={chatMessages} />
   } else if (user) {
-    gameScreen = <GameList />
+    gameScreen = <GameList chatMessages={chatMessages} />
   } else if (config) {
     gameScreen = <LoginScreen />
   }
@@ -78,14 +64,16 @@ const App = () => {
   }, [connectionState])
 
   return (
-    <ConfigContext.Provider value={config}>
-      <ConnectionContext.Provider value={connection}>
-        <UserContext.Provider value={user}>
-          {gameScreen}
-          {connectingScreen}
-        </UserContext.Provider>
-      </ConnectionContext.Provider>
-    </ConfigContext.Provider>
+    <ConnectionContext.Provider value={connection}>
+      <EventContext.Provider value={eventHandler}>
+        <ConfigContext.Provider value={config}>
+          <UserContext.Provider value={user}>
+            {gameScreen}
+            {connectingScreen}
+          </UserContext.Provider>
+        </ConfigContext.Provider>
+      </EventContext.Provider>
+    </ConnectionContext.Provider>
   )
 }
 

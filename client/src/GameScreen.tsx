@@ -1,11 +1,12 @@
 import React, {Component} from "react"
 import "./GameScreen.scss"
 import {range, unknownError} from "./utils"
-import {ConnectionContext, UserContext} from "./contexts"
+import {ConnectionContext, EventContext, UserContext} from "./contexts"
 import GameOptions from "./GameOptions"
 import {BlackCardView, WhiteCardView, WhiteCardGroup, WhiteCardPlaceholder} from "./cards"
 import {GameState, UserSession, WhiteCard} from "./state"
 import GameSocket from "./GameSocket"
+import {GameEventHandler} from "./events"
 
 const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, selectPos }: { game: GameState, chosenWhites: (WhiteCard | null)[], selectedWhitePos: number | null, unselectCard: (pos: number) => void, selectPos: (pos: number) => void }) => {
   let blackCard = null, whiteCards = null
@@ -76,6 +77,7 @@ const HandView = ({ game, chosenWhites, selectCard }: { game: GameState, chosenW
 
 type GameScreenProps = {
   connection: GameSocket
+  eventHandler: GameEventHandler
   user: UserSession
   game: GameState
 }
@@ -138,7 +140,20 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
       try {
         await connection.call(game.running ? "stop_game" : "start_game")
       } catch (error) {
-        unknownError(error)
+        switch (error.code) {
+          case "too_few_players":
+            this.props.eventHandler.error("The game cannot start because there are too few players.")
+            break
+          case "too_few_black_cards":
+            this.props.eventHandler.error("The game cannot start because there are no black cards in the selected card packs.")
+            break
+          case "too_few_white_cards":
+            this.props.eventHandler.error("The game cannot start because there are too few white cards in the selected card packs for this many players.")
+            break
+          default:
+            unknownError(error)
+            break
+        }
       }
     }
 
@@ -220,7 +235,11 @@ export default (props: {game: GameState, chatMessages: any}) => (
     {user => (
       <ConnectionContext.Consumer>
         {connection => (
-          <GameScreen user={user!} connection={connection!} {...props} />
+          <EventContext.Consumer>
+            {eventHandler => (
+              <GameScreen user={user!} connection={connection!} eventHandler={eventHandler!} {...props} />
+            )}
+          </EventContext.Consumer>
         )}
       </ConnectionContext.Consumer>
     )}

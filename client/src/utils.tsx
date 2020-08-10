@@ -44,3 +44,10 @@ export class Lock {
         }
     }
 }
+
+export const englishList = (items: string[], verb?: [string, string]) => {
+    if (items.length === 1)
+        return items[0] + (verb ? ` ${verb[0]}` : "")
+    else
+        return items.slice(0, -1).join(", ") + " and " + items[items.length - 1] + (verb ? ` ${verb[1]}` : "")
+}
