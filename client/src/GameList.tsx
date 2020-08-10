@@ -102,6 +102,10 @@ const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
       } else if (error.code === "game_not_found") {
         toast.error("The game was not found.")
         setJoinModalCode(null)
+      } else if (error.code === "game_full") {
+        toast.error("The game is full.")
+      } else if (error.code === "too_few_white_cards") {
+        toast.error("The game has too few white cards in play for you to join.")
       } else {
         unknownError(error)
       }
