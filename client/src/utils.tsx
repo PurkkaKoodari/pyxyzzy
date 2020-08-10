@@ -12,37 +12,35 @@ export const useMounted = () => {
     return mounted
 }
 
-export const unknownError = (error) => {
+export const unknownError = (error: string) => {
     toast.error("An unknown error occurred.")
 }
 
 let currentId = 1
 
-export const uniqueId = () => (currentId++)
+export const uniqueId = (): number => (currentId++)
 
-export const range = (start, end) => {
-    if (typeof end === "undefined")
+export const range = (start: number, end?: number) => {
+    if (end === undefined)
         return Array.from(Array(start).keys())
     else
         return Array.from(Array(end - start), (_, i) => i + start)
 }
 
 export class Lock {
-    constructor() {
-        this.locked = false
-        this.waiting = []
-    }
+    locked = false
+    waiting: (() => void)[] = []
 
-    async acquire(asyncTask) {
+    async acquire<T>(asyncTask: () => PromiseLike<T>) {
         if (this.locked)
-            await new Promise(resolve => this.waiting.push(resolve))
+            await new Promise<void>(resolve => this.waiting.push(resolve))
         this.locked = true
         try {
             return await asyncTask()
         } finally {
             this.locked = false
             if (this.waiting.length)
-                this.waiting.shift()()
+                this.waiting.shift()!()
         }
     }
 }

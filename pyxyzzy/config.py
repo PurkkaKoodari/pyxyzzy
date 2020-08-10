@@ -76,7 +76,7 @@ class NormalDistributionOptions(ParseableConfigObject):
 
 
 class GlobalConfig(ParseableConfigObject):
-    debug: DebugConfig
+    debug: DebugConfig = conf_field(to_json=False)
     server: ServerConfig = conf_field(to_json=False)
     database: DatabaseConfig = conf_field(to_json=False)
     game: GameConfig

@@ -1,5 +1,26 @@
-class BlackCard {
-    constructor(stateJson) {
+import {
+    AuthenticateResponse,
+    UpdateBlackCard, UpdateOptions,
+    UpdatePlayer,
+    UpdateRoot,
+    UpdateRound,
+    UpdateWhiteCard,
+} from "./api"
+
+export interface AbstractCard {
+    text: string
+    packName: string | null
+    fontSizeCacheKey: string
+}
+
+export class BlackCard implements AbstractCard {
+    text: string
+    packName: string | null
+    pickCount: number
+    drawCount: number
+    fontSizeCacheKey: string
+
+    constructor(stateJson: UpdateBlackCard) {
         this.text = stateJson.text
         this.pickCount = stateJson.pick_count
         this.drawCount = stateJson.draw_count
@@ -8,18 +29,31 @@ class BlackCard {
     }
 }
 
-class WhiteCard {
-    constructor(stateJson) {
+export class WhiteCard {
+    id: string
+    text: string
+    isBlank: boolean
+    packName: string | null
+    fontSizeCacheKey: string
+
+    constructor(stateJson: UpdateWhiteCard) {
         this.id = stateJson.id
-        this.text = stateJson.text
+        this.text = stateJson.text || ""
         this.isBlank = stateJson.blank
         this.packName = stateJson.pack_name
         this.fontSizeCacheKey = `white ${this.text}`
     }
 }
 
-class Round {
-    constructor(stateJson) {
+export class Round {
+    id: string
+    cardCzarId: string
+    blackCard: BlackCard
+    whiteCards: WhiteCard[][] | null
+    winningPlayerId: string | null
+    winningCardsId: string | null
+
+    constructor(stateJson: UpdateRound) {
         this.id = stateJson.id
         this.cardCzarId = stateJson.card_czar
         this.blackCard = new BlackCard(stateJson.black_card)
@@ -33,17 +67,26 @@ class Round {
     }
 }
 
-class Player {
-    constructor(stateJson) {
+export class Player {
+    id: string
+    name: string
+    score: number
+    isThinking: boolean
+
+    constructor(stateJson: UpdatePlayer) {
         this.id = stateJson.id
         this.name = stateJson.name
         this.score = stateJson.score
-        this.hasPlayed = stateJson.played
+        this.isThinking = stateJson.playing
     }
 }
 
 export class UserSession {
-    constructor(stateJson) {
+    id: string
+    name: string
+    token: string
+
+    constructor(stateJson: AuthenticateResponse) {
         this.id = stateJson.id
         this.name = stateJson.name
         this.token = stateJson.token
@@ -51,7 +94,15 @@ export class UserSession {
 }
 
 export class GameState {
-    constructor(user, stateJson) {
+    user: UserSession
+    state: string
+    code: string
+    currentRound: Round | null
+    players: Player[]
+    options: UpdateOptions
+    hand: WhiteCard[]
+
+    constructor(user: UserSession, stateJson: UpdateRoot) {
         this.user = user
         this.state = stateJson.game.state
         this.code = stateJson.game.code
@@ -61,30 +112,33 @@ export class GameState {
         this.hand = stateJson.hand.map(card => new WhiteCard(card))
     }
 
-    get running() {
+    get running(): boolean {
         return this.state !== "not_started" && this.state !== "game_ended"
     }
 
-    get host() {
+    get host(): Player {
         return this.players[0]
     }
 
-    get cardCzar() {
+    get cardCzar(): Player {
         if (!this.currentRound)
             throw new Error("game is not running")
         return this.player(this.currentRound.cardCzarId)
     }
 
-    player(id) {
-        return this.players.find(player => player.id === id)
+    player(id: string): Player {
+        const player = this.players.find(player => player.id === id)
+        if (!player)
+            throw new Error("player not found")
+        return player
     }
 
-    get roundId() {
+    get roundId(): string | null {
         return this.currentRound && this.currentRound.id
     }
 
     get shouldPlayWhiteCards() {
-        return this.state === "playing" && this.currentRound.whiteCards === null && this.hand.length > 0
+        return this.state === "playing" && this.currentRound!.whiteCards === null && this.hand.length > 0
     }
 
     get shouldJudge() {

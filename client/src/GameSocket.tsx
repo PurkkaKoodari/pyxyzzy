@@ -1,6 +1,7 @@
 import log from "loglevel"
-import { uniqueId } from "./utils"
+import {uniqueId} from "./utils"
 import {GameState, UserSession} from "./state"
+import {AuthenticateResponse, UpdateRoot} from "./api"
 
 const UI_VERSION = "0.1-a1"
 
@@ -21,12 +22,15 @@ const getSessionFromStorage = () => {
   }
 }
 
-const saveSessionInStorage = (session) => {
+const saveSessionInStorage = (session: UserSession | null) => {
   localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
 }
 
 class ApiError extends Error {
-  constructor(code, description) {
+  code: string
+  description: string
+
+  constructor(code: string, description: string) {
     super(`[${code}] ${description}`)
     this.name = "ApiError"
     this.code = code
@@ -34,41 +38,59 @@ class ApiError extends Error {
   }
 }
 
+interface ApiCall<R> {
+  call_id: number
+  persistent: boolean
+  send(): void
+  success(result: R): void
+  fail(code: string, description: string): void
+}
+
 export default class GameSocket {
-  constructor(url) {
+  // the websocket url
+  url: string
+
+  // called when the (client-facing) connection state changes
+  onConnectionStateChange: (status: string, retryIn?: number) => void = () => {}
+  // called when a config is received from the server
+  onConfigChange: (config: any) => void = () => {}
+  // called when the user logs in or out
+  onSessionChange: (session: UserSession | null) => void = () => {}
+  // called when a game event occurs
+  onGameEvent: (event: any) => void = () => {}
+  // called when the game state changes
+  onGameStateChange: (state: GameState | null) => void = () => {}
+
+  // WebSocket instance
+  socket: WebSocket | null = null
+
+  // true when websocket connected
+  connected = false
+  // true when connected & can authenticate
+  handshaked = false
+  // true when connected & user logged in
+  authenticated = false
+  // true when disconnect() has been called
+  closeRequested = false
+
+  // seconds to sleep before attempting to reconnect
+  reconnectDelay = 0
+  // setTimeout id for sleeping before reconnection
+  reconnectTimeout: any
+  // number of started connection attempts since last successful connection
+  connectAttempts = 0
+
+  // promises for ongoing API calls
+  ongoingCalls: { [key: number]: ApiCall<any> } = {}
+
+  // stored session for relogin
+  session = getSessionFromStorage()
+
+  // stored game state JSON for delta updates
+  gameStateJson: Partial<UpdateRoot> = {}
+
+  constructor(url: string) {
     this.url = url
-    this.onConnectionStateChange = () => {}
-    this.onConfigChange = () => {}
-    this.onSessionChange = () => {}
-    this.onGameEvent = () => {}
-    this.onGameStateChange = () => {}
-
-    // WebSocket instance
-    this.socket = null
-    // true when websocket connected
-    this.connected = false
-    // true when connected & can authenticate
-    this.handshaked = false
-    // true when connected & user logged in
-    this.authenticated = false
-    // true when disconnect() has been called
-    this.closeRequested = false
-
-    // seconds to sleep before attempting to reconnect
-    this.reconnectDelay = 0
-    // setTimeout id for sleeping before reconnection
-    this.reconnectTimeout = -1
-    // number of started connection attempts since last successful connection
-    this.connectAttempts = 0
-
-    // promises for ongoing API calls
-    this.ongoingCalls = {}
-
-    // stored session for relogin
-    this.session = getSessionFromStorage()
-
-    // stored game state JSON for delta updates
-    this.gameStateJson = {}
   }
 
   disconnect() {
@@ -78,7 +100,7 @@ export default class GameSocket {
     this.handleDisconnection()
   }
 
-  async login(name) {
+  async login(name: string) {
     await this.doAuthenticate({ name })
   }
 
@@ -90,7 +112,7 @@ export default class GameSocket {
     this.removeSession()
   }
 
-  setSession(session) {
+  setSession(session: UserSession | null) {
     this.session = session
     saveSessionInStorage(session)
     this.onSessionChange(session)
@@ -116,7 +138,7 @@ export default class GameSocket {
       log.debug("connected, sending version")
       this.connectAttempts = 0
       this.connected = true
-      this.socket.send(JSON.stringify({
+      this.socket!.send(JSON.stringify({
         "version": UI_VERSION
       }))
     })
@@ -137,7 +159,7 @@ export default class GameSocket {
       this.updateReconnectionTimer()
     })
 
-    ws.addEventListener("message", (e) => {
+    ws.addEventListener("message", (e: MessageEvent) => {
       // if we are closing the connection, ignore messages
       if (this.closeRequested) return
       // all messages are JSON
@@ -207,11 +229,21 @@ export default class GameSocket {
         this.gameStateJson = {}
 
       let updated = false
-      for (const field of ["game", "options", "hand", "players"]) {
-        if (field in data) {
-          this.gameStateJson[field] = data[field]
-          updated = true
-        }
+      if ("game" in data) {
+        this.gameStateJson.game = data.game
+        updated = true
+      }
+      if ("hand" in data) {
+        this.gameStateJson.hand = data.hand
+        updated = true
+      }
+      if ("players" in data) {
+        this.gameStateJson.players = data.players
+        updated = true
+      }
+      if ("options" in data) {
+        this.gameStateJson.options = data.options
+        updated = true
       }
       if (updated) this.dispatchUpdatedGameState()
 
@@ -229,15 +261,15 @@ export default class GameSocket {
     if (["game", "options", "hand", "players"].some(attr => !(attr in this.gameStateJson)) || this.gameStateJson.game === null) {
       this.onGameStateChange(null)
     } else {
-      this.onGameStateChange(new GameState(this.session, this.gameStateJson))
+      this.onGameStateChange(new GameState(this.session!, this.gameStateJson as UpdateRoot))
     }
   }
 
   async doRelogin() {
     try {
       await this.doAuthenticate({
-        id: this.session.id,
-        token: this.session.token
+        id: this.session!.id,
+        token: this.session!.token
       })
     } catch (error) {
       if (error.code !== "disconnected") {
@@ -249,8 +281,8 @@ export default class GameSocket {
     }
   }
 
-  async doAuthenticate(params) {
-    const response = await this.call("authenticate", params, false)
+  async doAuthenticate(params: object) {
+    const response = await this.call<AuthenticateResponse>("authenticate", params, false)
     const session = new UserSession(response)
     this.authenticated = true
     // send persistent calls from previous connection (before notifying the client, as that might cause new calls)
@@ -294,28 +326,28 @@ export default class GameSocket {
     setTimeout(() => window.location.reload(), 2000)
   }
 
-  call(action, data = {}, persistent = false) {
+  call<R>(action: string, data: object = {}, persistent = false) {
     const thisSocket = this
-    return new Promise((resolve, reject) => {
+    return new Promise<R>((resolve, reject) => {
       const call_id = uniqueId()
       const request = {
         action,
         call_id,
         ...data
       }
-      const call = {
+      const call: ApiCall<R> = {
         call_id,
-        success(result) {
+        persistent,
+        success(result: R) {
           log.debug(`${call_id} <`, result)
           resolve(result)
         },
-        fail(code, description) {
+        fail(code: string, description: string) {
           log.debug(`${call_id} FAILED ${code} ${description}`)
           reject(new ApiError(code, description))
         },
-        persistent,
         send() {
-          thisSocket.socket.send(JSON.stringify(request))
+          thisSocket.socket!.send(JSON.stringify(request))
         }
       }
       log.debug(`${call_id} > ${action}`, data)

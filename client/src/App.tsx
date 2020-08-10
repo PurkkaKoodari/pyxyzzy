@@ -7,21 +7,24 @@ import GameScreen from "./GameScreen"
 import GameSocket from "./GameSocket"
 import LoginScreen from "./LoginScreen"
 import { ConfigContext, ConnectionContext, UserContext } from "./contexts"
+import {GameState, UserSession} from "./state"
 
 const SERVER_URL = "ws://localhost:8080/ws"
 
 class EventHandler {
-  constructor(onChatMessagesChange) {
-    this.chatMessages = []
+  chatMessages: any[] = []
+  onChatMessagesChange: any
+
+  constructor(onChatMessagesChange: any) {
     this.onChatMessagesChange = onChatMessagesChange
   }
 
-  addChatMessage(message) {
+  addChatMessage(message: any) {
     this.chatMessages.push(message)
     this.onChatMessagesChange(this.chatMessages)
   }
 
-  handle(event) {
+  handle(event: any) {
     switch (event.type) {
       // TODO
     }
@@ -30,12 +33,12 @@ class EventHandler {
 
 const App = () => {
   const [connectionState, setConnectionState] = useState("connect")
-  const [config, setConfig] = useState(null)
-  const [retryTime, setRetryTime] = useState(0)
-  const [user, setUser] = useState(null)
+  const [config, setConfig] = useState<any>(null)
+  const [retryTime, setRetryTime] = useState<number | undefined>(0)
+  const [user, setUser] = useState<UserSession | null>(null)
 
-  const [connection, setConnection] = useState(null)
-  const [game, setGame] = useState(null)
+  const [connection, setConnection] = useState<GameSocket | null>(null)
+  const [game, setGame] = useState<GameState | null>(null)
   const [chatMessages, setChatMessages] = useState([])
 
   useEffect(() => {

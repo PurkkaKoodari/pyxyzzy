@@ -3,23 +3,25 @@ import "./GameScreen.scss"
 import {range, unknownError} from "./utils"
 import {ConnectionContext, UserContext} from "./contexts"
 import GameOptions from "./GameOptions"
-import {BlackCard, WhiteCard, WhiteCardGroup, WhiteCardPlaceholder} from "./cards"
+import {BlackCardView, WhiteCardView, WhiteCardGroup, WhiteCardPlaceholder} from "./cards"
+import {GameState, UserSession, WhiteCard} from "./state"
+import GameSocket from "./GameSocket"
 
-const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, setSelectedWhitePos }) => {
+const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, selectPos }: { game: GameState, chosenWhites: (WhiteCard | null)[], selectedWhitePos: number | null, unselectCard: (pos: number) => void, selectPos: (pos: number) => void }) => {
   let blackCard = null, whiteCards = null
   if (game.currentRound) {
-    blackCard = <BlackCard card={game.currentRound.blackCard} />
+    blackCard = <BlackCardView card={game.currentRound.blackCard} />
 
     if ((game.state === "judging" || game.state === "round_ended") && game.currentRound.whiteCards) {
-      whiteCards = game.currentRound.whiteCards.map((group, pos) => {
-        const won = game.state === "round_ended" && game.currentRound.winningCardsId === group[0].id
+      whiteCards = game.currentRound.whiteCards.map((group: WhiteCard[], pos: number) => {
+        const won = game.state === "round_ended" && game.currentRound!.winningCardsId === group[0].id
         const selected = selectedWhitePos === pos
         return (
           <WhiteCardGroup
               key={group[0].id}
-              cards={group.map(card => <WhiteCard key={card.id} card={card}/>)}
+              cards={group.map(card => <WhiteCardView key={card.id} card={card}/>)}
               active={won || selected}
-              onClick={() => game.shouldJudge && setSelectedWhitePos(pos)} />
+              onClick={() => game.shouldJudge && selectPos(pos)} />
         )
       })
     } else if (game.state === "playing" && (game.shouldPlayWhiteCards || game.currentRound.whiteCards)) {
@@ -27,9 +29,9 @@ const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, setSelec
       const placeholders = range(game.currentRound.pickCount).map(pos => {
         if (cards[pos] !== null) {
           return (
-            <WhiteCard
-                key={cards[pos].id}
-                card={cards[pos]}
+            <WhiteCardView
+                key={cards[pos]!.id}
+                card={cards[pos]!}
                 onClick={() => game.shouldPlayWhiteCards && unselectCard(pos)} />
           )
         } else {
@@ -37,7 +39,7 @@ const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, setSelec
             <WhiteCardPlaceholder
                 key={pos}
                 active={selectedWhitePos === pos}
-                onClick={() => setSelectedWhitePos(pos)}
+                onClick={() => selectPos(pos)}
                 text="(play a card)" />
           )
         }
@@ -53,18 +55,18 @@ const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, setSelec
   )
 }
 
-const HandView = ({ game, chosenWhites, selectCard }) => {
+const HandView = ({ game, chosenWhites, selectCard }: { game: GameState, chosenWhites: (WhiteCard | null)[], selectCard: (card: WhiteCard) => void }) => {
   if (!game.shouldPlayWhiteCards)
     return null
 
   const cards = game.hand.map((card, pos) => {
     const picked = chosenWhites.some(chosen => chosen && chosen.id === card.id)
     return (
-      <WhiteCard
+      <WhiteCardView
           key={card.id}
           card={card}
           picked={picked}
-          onClick={() => selectCard(card.id)} />
+          onClick={() => selectCard(card)} />
     )
   })
   return (
@@ -72,15 +74,28 @@ const HandView = ({ game, chosenWhites, selectCard }) => {
   )
 }
 
-class GameScreen extends Component {
-  state = {
+type GameScreenProps = {
+  connection: GameSocket
+  user: UserSession
+  game: GameState
+}
+
+type GameScreenState = {
+  currentRoundId: string | null
+  currentGameState: string | null
+  chosenWhites: (WhiteCard | null)[] | null
+  selectedWhitePos: number | null
+}
+
+class GameScreen extends Component<GameScreenProps, GameScreenState> {
+  state: GameScreenState = {
     currentRoundId: null,
     currentGameState: null,
     chosenWhites: null,
     selectedWhitePos: null,
   }
 
-  static getDerivedStateFromProps(props, state) {
+  static getDerivedStateFromProps(props: GameScreenProps, state: GameScreenState) {
     let newState = {}
     // clear chosen white cards if not playing any
     if (props.game.roundId !== state.currentRoundId || !props.game.shouldPlayWhiteCards) {
@@ -127,9 +142,9 @@ class GameScreen extends Component {
       }
     }
 
-    const unselectCard = (posToClear) => {
+    const unselectCard = (posToClear: number) => {
       // unselect the card at the position
-      const newChosenWhites = [...this.state.chosenWhites]
+      const newChosenWhites = [...this.state.chosenWhites!]
       newChosenWhites[posToClear] = null
       this.setState({
         chosenWhites: newChosenWhites,
@@ -138,16 +153,16 @@ class GameScreen extends Component {
       })
     }
 
-    const selectCard = (cardId) => {
+    const selectCard = (card: WhiteCard) => {
       // can't reselect a card
-      if (this.state.chosenWhites.some(chosen => chosen && chosen.id === cardId))
+      if (this.state.chosenWhites!.some(chosen => chosen && chosen.id === card.id))
         return
       // ensure a valid slot
       if (this.state.selectedWhitePos === null || !game.currentRound || this.state.selectedWhitePos >= game.currentRound.pickCount)
         return
       // put the card in place
-      const newChosenWhites = [...this.state.chosenWhites]
-      newChosenWhites[this.state.selectedWhitePos] = game.hand.find(card => card.id === cardId)
+      const newChosenWhites = [...this.state.chosenWhites!]
+      newChosenWhites[this.state.selectedWhitePos!] = card
       // find a free slot, if any
       const nextFreePos = range(this.state.selectedWhitePos + 1, game.currentRound.pickCount)
           .concat(range(0, this.state.selectedWhitePos))
@@ -187,25 +202,25 @@ class GameScreen extends Component {
           <GameOptions game={game}/>
           <CardView
               game={game}
-              chosenWhites={this.state.chosenWhites}
+              chosenWhites={this.state.chosenWhites!}
               unselectCard={unselectCard}
               selectedWhitePos={this.state.selectedWhitePos}
-              setSelectedWhitePos={(selectedWhitePos) => this.setState({selectedWhitePos})} />
+              selectPos={pos => this.setState({selectedWhitePos: pos})} />
           <HandView
               game={game}
-              chosenWhites={this.state.chosenWhites}
+              chosenWhites={this.state.chosenWhites!}
               selectCard={selectCard} />
         </div>
     )
   }
 }
 
-export default (props) => (
+export default (props: {game: GameState, chatMessages: any}) => (
   <UserContext.Consumer>
     {user => (
       <ConnectionContext.Consumer>
         {connection => (
-          <GameScreen user={user} connection={connection} {...props} />
+          <GameScreen user={user!} connection={connection!} {...props} />
         )}
       </ConnectionContext.Consumer>
     )}

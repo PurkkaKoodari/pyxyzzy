@@ -552,7 +552,6 @@ async def run_bots(server: GameServer, stop_condition: Future):
         LOGGER.info("Starting %s", new_bot)
         running_bots.append(new_bot)
         create_task_log_errors(new_bot.connect())
-        return new_bot
 
     while not stop_condition.done():
         await sleep(1)

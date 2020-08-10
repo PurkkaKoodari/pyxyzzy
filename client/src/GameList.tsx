@@ -1,25 +1,26 @@
-import React, { useEffect, useState, useContext } from "react"
+import React, {useEffect, useState, useContext, FormEvent, ChangeEvent} from "react"
 import Modal from "react-modal"
 import { toast } from "react-toastify"
 import "./GameList.scss"
 import Loader from "./Loader"
 import { useMounted, unknownError } from "./utils"
 import { ConfigContext, UserContext, ConnectionContext } from "./contexts"
+import {GameListGame, GameListResponse} from "./api"
 
-const CodeJoinForm = ({ joining, onJoin }) => {
-  const config = useContext(ConfigContext)
+const CodeJoinForm = ({ joining, onJoin }: { joining: boolean, onJoin: (code: string) => void }) => {
+  const config = useContext(ConfigContext)!
   const [code, setCode] = useState("")
 
   const codeValid = code.length === config.game.code.length
 
-  const handleCodeChange = (e) => {
+  const handleCodeChange = (e: ChangeEvent<HTMLInputElement>) => {
     const newCode = e.target.value
       .toUpperCase()
       .replace(new RegExp(`[^${config.game.code.characters}]`, "g"), "")
     setCode(newCode)
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (joining || !codeValid) return
     onJoin(code)
@@ -40,7 +41,7 @@ const CodeJoinForm = ({ joining, onJoin }) => {
   )
 }
 
-const GameCard = ({ game, joining, onJoin }) => {
+const GameCard = ({ game, joining, onJoin }: { game: GameListGame, joining: boolean, onJoin: (code: string) => void }) => {
   return (
     <div className="game" key={game.code}>
       <h4 className="title">{game.title}</h4>
@@ -53,21 +54,22 @@ const GameCard = ({ game, joining, onJoin }) => {
 }
 
 const GameList = () => {
-  const [games, setGames] = useState(null)
+  const [games, setGames] = useState<GameListGame[] | "error" | null>(null)
   const [filter, setFilter] = useState("")
-  const [forcedUpdate, setForcedUpdate] = useState(null)
+  const [forcedUpdate, setForcedUpdate] = useState<any>(null)
   const [joining, setJoining] = useState(false)
-  const [joinModalCode, setJoinModalCode] = useState(null)
+  const [joinModalCode, setJoinModalCode] = useState<string | null>(null)
   const [joinModalPassword, setJoinModalPassword] = useState("")
   const [joinModalIncorrect, setJoinModalIncorrect] = useState(false)
 
   const mounted = useMounted()
-  const connection = useContext(ConnectionContext)
-  const user = useContext(UserContext)
+  // this component is only rendered when these exist
+  const connection = useContext(ConnectionContext)!
+  const user = useContext(UserContext)!
 
   useEffect(() => {
     setGames(null)
-    connection.call("game_list")
+    connection.call<GameListResponse>("game_list")
       .then(response => {
         if (!mounted.is) return
         setGames(response.games)
@@ -86,7 +88,7 @@ const GameList = () => {
     }
   }
 
-  const handleJoinGame = async (code, password = "") => {
+  const handleJoinGame = async (code: string, password: string = "") => {
     setJoining(true)
     try {
       await connection.call("join_game", { code, password }, true)
@@ -115,10 +117,10 @@ const GameList = () => {
     }
   }
 
-  const handleModalJoin = (e) => {
+  const handleModalJoin = (e: FormEvent) => {
     e.preventDefault()
     if (joining) return
-    handleJoinGame(joinModalCode, joinModalPassword)
+    handleJoinGame(joinModalCode!, joinModalPassword)
   }
 
   let gameList
@@ -173,7 +175,7 @@ const GameList = () => {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Find&hellip;" />
-          <button type="button" className="refresh" onClick={() => setForcedUpdate([])}>Refresh</button>
+          <button type="button" className="refresh" onClick={() => setForcedUpdate(new Object())}>Refresh</button>
         </div>
       </div>
       {gameList}
@@ -192,7 +194,7 @@ const GameList = () => {
             onChange={(e) => setJoinModalPassword(e.target.value)} />
           <button type="submit" className="join" disabled={joining}>Join</button>
         </form>
-        {joinModalIncorrect ? (<div class="error">The password is incorrect.</div>) : null}
+        {joinModalIncorrect ? (<div className="error">The password is incorrect.</div>) : null}
       </Modal>
     </div>
   )

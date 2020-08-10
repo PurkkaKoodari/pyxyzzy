@@ -710,7 +710,7 @@ class Game:
                         "id": str(player.id),
                         "name": player.user.name,
                         "score": player.score,
-                        "played": self.state == GameState.playing and player.id in self.current_round.white_cards
+                        "playing": self.state == GameState.playing and self.current_round.needs_to_play(player),
                     } for player in self.players]
                 if UpdateType.options in player.pending_updates:
                     to_send["options"] = self.options.to_json()

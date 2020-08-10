@@ -1,12 +1,13 @@
-import React, { useState, useContext } from "react"
+import React, {useState, useContext, FormEvent} from "react"
 import "./LoginScreen.scss"
 import ExternalLink from "./ExternalLink"
 import { useMounted } from "./utils"
 import { ConfigContext, ConnectionContext } from "./contexts"
 
 const LoginScreen = () => {
-  const config = useContext(ConfigContext)
-  const connection = useContext(ConnectionContext)
+  const config = useContext(ConfigContext)!
+  const connection = useContext(ConnectionContext)!
+
   const [loggingIn, setLoggingIn] = useState(false)
   const [name, setName] = useState("")
   const [loginError, setLoginError] = useState(null)
@@ -30,7 +31,7 @@ const LoginScreen = () => {
   if (loginError)
     nameProblems.push(loginError === "name_in_use" ? "That name is already in use." : "Login failed with an unknown error.")
 
-  const handleLogin = async (e) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
     if (!canSubmit) return
     setLoggingIn(true)
