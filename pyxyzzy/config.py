@@ -18,6 +18,7 @@ from pyxyzzy.utils import generate_code
 from pyxyzzy.utils.config import ConfigError, ParseableConfigObject, conf_field
 
 DEFAULT_CONFIG_FILE = "config.toml"
+MAX_INCLUDE_DEPTH = 16
 
 
 def _validate_blacklist_syntax(blacklist: Sequence[str]):
@@ -228,12 +229,47 @@ class ChatConfig(ParseableConfigObject):
 config: Optional[GlobalConfig] = None
 
 
-def load(file=None, reload=False):
+def _merge_dicts(left: dict, right: dict) -> dict:
+    """Recursively merge all ``dict``s in ``right`` into ``left``. ``list``s are overwritten instead of recursing."""
+    if not isinstance(left, dict):
+        raise ConfigError(None, f"can't merge dict in %s into {type(left).__name__} from included file")
+    for key, rval in right.items():
+        if isinstance(rval, dict):
+            lval = left.setdefault(key, {})
+            try:
+                _merge_dicts(lval, rval)
+            except ConfigError as ex:
+                raise ex.parent_error(key) from None
+        else:
+            left[key] = rval
+    return left
+
+
+def _load_toml(file: str, depth=0) -> dict:
+    """Loads raw TOML data from a file, processing ``include`` directives."""
+    with open(file) as stream:
+        toml_data = toml.load(stream)
+
+    if "include" in toml_data:
+        if depth >= MAX_INCLUDE_DEPTH:
+            raise ConfigError("include",
+                              f"%s: config files can't be included more than {MAX_INCLUDE_DEPTH} levels deep")
+        included_file = toml_data.pop("include")
+        included_data = _load_toml(included_file)
+        toml_data = _merge_dicts(included_data, toml_data)
+
+    return toml_data
+
+
+def load(file: str = None, reload: str = False):
+    """Loads the global config object from a file, or ``DEFAULT_CONFIG_FILE`` if not provided.
+
+    May only be called once unless ``reload`` is set.
+    """
     global config
     if file is None:
         file = DEFAULT_CONFIG_FILE
     if config is not None and not reload:
         raise RuntimeError("attempting to load config while it is already loaded")
-    with open(file) as stream:
-        toml_data = toml.load(stream)
+    toml_data = _load_toml(file)
     config = GlobalConfig.from_dict(toml_data)

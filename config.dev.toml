@@ -1,0 +1,10 @@
+# This file contains the development configuration, used by the IntelliJ launch configuration.
+# It is deliberately ignored from Git, so that it can be changed for development without unnecessary updates.
+
+# Copy all settings from the production configuration in config.toml.
+include = "config.toml"
+
+# Add any custom configuration below.
+[debug]
+enabled = true
+bots.count = 20

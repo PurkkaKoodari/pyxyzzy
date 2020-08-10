@@ -1,4 +1,9 @@
-# Created by .ignore support plugin (hsz.mobi)
+# Development configs
+config.dev.toml
+cards.dev.db
+
+# JS template not included
+
 ### Python template
 # Byte-compiled / optimized / DLL files
 __pycache__/

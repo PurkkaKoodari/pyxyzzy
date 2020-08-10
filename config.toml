@@ -1,4 +1,8 @@
-# This file contains the configuration for the game.
+# This file contains the default configuration for the game.
+
+# You can use the following directive in the start of a new config file to override configuration locally while keeping
+# this file up to date from upstream:
+#   include = "config.toml"
 
 [server]
 # The listen address for the game server.
@@ -80,9 +84,9 @@ blacklist = []
 
 [debug]
 # Whether or not to enable various debug features, such as DEBUG level logging.
-enabled = true
+enabled = false
 # How many bots to keep running. Bots join random public games and play randomly.
-bots.count = 20
+bots.count = 0
 # How many players the bots will target to have per game. If all games are near this limit, bots may opt to create new
 # games.
 bots.game_size = 5
@@ -91,4 +95,4 @@ bots.create_games = true
 # Parameters for the normal distribution that determines the time bots take to play.
 bots.play_speed = { mean = 5.0, stddev = 2.0 }
 # Raw game options that bots will set on games they host.
-bots.game_options = { idle_rounds = 5 }
+bots.game_options = {}
