@@ -43,19 +43,23 @@ $activeWhiteCardGroup: #536099;
         padding-left: 0;
     }
 }
+@function scale-card($measure, $fontSize: 1.0) {
+    @return $measure / 1px * 0.01em / $fontSize;
+}
 .card {
-    border: 1px solid $cardBorder;
-    border-radius: 8px;
-    padding: 9px;
-    width: 200px;
-    height: 200px;
-    position: relative;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 100px; // everything scales relative to this
+    border: 1px solid $cardBorder;
+    border-radius: 4%;
+    padding: scale-card(9px);
+    width: scale-card(200px);
+    height: scale-card(200px);
+    position: relative;
 
     &.white {
         background-color: $whiteCard;
         color: $whiteCardText;
-        margin: 5px 0 0 5px;
+        margin: scale-card(5px) 0 0 scale-card(5px);
 
         &.picked {
             opacity: 0.5;
@@ -81,7 +85,7 @@ $activeWhiteCardGroup: #536099;
     &.black {
         background-color: $blackCard;
         color: $blackCardText;
-        margin: 10px 0 0 10px;
+        margin: scale-card(10px) 0 0 scale-card(10px);
 
         .text {
             display: flex;
@@ -99,7 +103,7 @@ $activeWhiteCardGroup: #536099;
                     flex: 1 0 auto;
                 }
                 .blank {
-                    border-bottom: 2px solid $blackCardText;
+                    border-bottom: 0.11em solid $blackCardText;
                     flex: 1 0 6ch;
                     width: 6ch;
                 }
@@ -119,35 +123,31 @@ $activeWhiteCardGroup: #536099;
     }
     .bottom {
         position: absolute;
-        left: 10px;
-        right: 10px;
-        bottom: 10px;
+        left: scale-card(10px);
+        right: scale-card(10px);
+        bottom: scale-card(10px);
         display: flex;
         align-items: flex-end;
-    }
-    .icon {
-        width: 17px;
-        height: 16px;
     }
     .pack-name {
         flex: 1 1 auto;
         background-repeat: no-repeat;
         background-size: contain;
         background-position: left center;
-        padding-left: 28px;
-        height: 23px;
-        line-height: 25px;
-        font-size: 11px;
+        padding-left: scale-card(28px, 0.11);
+        height: scale-card(23px, 0.11);
+        line-height: scale-card(23px, 0.11);
+        font-size: 0.11em;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
     .draw-pick {
         text-align: right;
-        font-size: 13px;
+        font-size: 0.13em;
         font-weight: bold;
         white-space: nowrap;
-        margin-left: 5px;
+        margin-left: scale-card(5px, 0.13);
 
         > div {
             margin-top: 2px;

@@ -168,7 +168,8 @@ export const WhiteCardView = ({ card, picked, givenTextSize, scale, onClick }: {
     scale = 1
 
   return (
-    <div className={`white card ${picked ? "picked" : ""}`} onClick={onClick}>
+    // everything scales relative to the fontSize on the card
+    <div className={`white card ${picked ? "picked" : ""}`} style={{fontSize: `${100 * scale}px`}} onClick={onClick}>
       <div className="text" style={{fontSize: `${textSize * scale}px`}}>
         {processCardText(card.text, false)}
       </div>

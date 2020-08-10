@@ -1,9 +1,9 @@
-import React, {Component} from "react"
+import React, {Component, useEffect, useState} from "react"
 import "./GameScreen.scss"
 import {range, unknownError} from "./utils"
 import {ConnectionContext, EventContext, UserContext} from "./contexts"
 import GameOptions from "./GameOptions"
-import {BlackCardView, WhiteCardView, WhiteCardGroup, WhiteCardPlaceholder} from "./cards"
+import {BlackCardView, WhiteCardGroup, WhiteCardPlaceholder, WhiteCardView} from "./cards"
 import {GameState, UserSession, WhiteCard} from "./state"
 import GameSocket from "./GameSocket"
 import {GameEventHandler} from "./events"
@@ -77,16 +77,31 @@ const CardView = ({ game, chosenWhites, selectedWhitePos, playing, unselectCard,
   )
 }
 
+const MINIMUM_HAND_SCALE = 0.7
+
 interface HandViewProps {
   game: GameState
   chosenWhites: (WhiteCard | null)[]
   playing: boolean
+  windowWidth: number
   selectCard: (card: WhiteCard) => void
 }
 
-const HandView = ({ game, chosenWhites, playing, selectCard }: HandViewProps) => {
+const HandView = ({ game, chosenWhites, playing, windowWidth, selectCard }: HandViewProps) => {
   if (!game.shouldPlayWhiteCards)
     return null
+
+  let scale = 1
+  for (let rows = 1; rows < game.hand.length; rows++) {
+    const cardsPerRow = Math.ceil(game.hand.length / rows)
+    const unscaledRowWidth = 5 + 205 * cardsPerRow
+    scale = Math.min(1, windowWidth / unscaledRowWidth)
+    if (scale >= MINIMUM_HAND_SCALE) {
+      console.log(`fit ${cardsPerRow} per row in ${rows} rows, each taking ${unscaledRowWidth}px`)
+      break
+    }
+  }
+  scale = Math.max(scale, MINIMUM_HAND_SCALE)
 
   const cards = game.hand.map((card, pos) => {
     const picked = chosenWhites.some(chosen => chosen && chosen.id === card.id)
@@ -95,11 +110,15 @@ const HandView = ({ game, chosenWhites, playing, selectCard }: HandViewProps) =>
           key={card.id}
           card={card}
           picked={picked}
+          scale={scale}
           onClick={() => !playing && selectCard(card)} />
     )
   })
   return (
-    <div className="cards hand">{cards}</div>
+    <div className="hand">
+      <h3>Your hand</h3>
+      <div className="cards">{cards}</div>
+    </div>
   )
 }
 
@@ -108,6 +127,7 @@ type GameScreenProps = {
   eventHandler: GameEventHandler
   user: UserSession
   game: GameState
+  windowWidth: number
 }
 
 type GameScreenState = {
@@ -296,24 +316,44 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
               game={game}
               chosenWhites={this.state.chosenWhites!}
               playing={this.state.playing}
+              windowWidth={this.props.windowWidth}
               selectCard={selectCard} />
         </div>
     )
   }
 }
 
-export default (props: {game: GameState, chatMessages: any}) => (
-  <UserContext.Consumer>
-    {user => (
-      <ConnectionContext.Consumer>
-        {connection => (
-          <EventContext.Consumer>
-            {eventHandler => (
-              <GameScreen user={user!} connection={connection!} eventHandler={eventHandler!} {...props} />
-            )}
-          </EventContext.Consumer>
-        )}
-      </ConnectionContext.Consumer>
-    )}
-  </UserContext.Consumer>
-)
+export default (props: {game: GameState, chatMessages: any}) => {
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
+
+  useEffect(() => {
+    const listener = () => {
+      setWindowWidth(window.innerWidth)
+    }
+    window.addEventListener("resize", listener)
+    return () => {
+      window.removeEventListener("resize", listener)
+    }
+  }, [])
+
+  return (
+    <UserContext.Consumer>
+      {user => (
+        <ConnectionContext.Consumer>
+          {connection => (
+            <EventContext.Consumer>
+              {eventHandler => (
+                <GameScreen
+                    user={user!}
+                    connection={connection!}
+                    eventHandler={eventHandler!}
+                    windowWidth={windowWidth}
+                    {...props} />
+              )}
+            </EventContext.Consumer>
+          )}
+        </ConnectionContext.Consumer>
+      )}
+    </UserContext.Consumer>
+  )
+}
