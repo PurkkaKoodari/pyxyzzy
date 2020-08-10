@@ -1,6 +1,6 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
 import log from "loglevel"
 import { uniqueId } from "./utils"
+import {GameState, UserSession} from "./state"
 
 const UI_VERSION = "0.1-a1"
 
@@ -15,10 +15,14 @@ const getSessionFromStorage = () => {
     if (!sessionJson) return null
     const session = JSON.parse(sessionJson)
     if (!("id" in session && "token" in session)) return null
-    return session
+    return new UserSession(session)
   } catch (_) {
     return null
   }
+}
+
+const saveSessionInStorage = (session) => {
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
 }
 
 class ApiError extends Error {
@@ -30,225 +34,268 @@ class ApiError extends Error {
   }
 }
 
-// Because there seems to be no other sane way to integrate WebSockets with React,
-// the component enforces that the callbacks must not change (i.e. they must just take
-// the event and pass it to some app-level setState). Additionally, changing the URL
-// is not supported.
-// The following line disables the warning for not monitoring the parameters, as there's
-// no point in wrapping literally everything in useCallback and similar. If the parameters
-// change, the useEffect hook throws.
+export default class GameSocket {
+  constructor(url) {
+    this.url = url
+    this.onConnectionStateChange = () => {}
+    this.onConfigChange = () => {}
+    this.onSessionChange = () => {}
+    this.onGameEvent = () => {}
+    this.onGameStateChange = () => {}
 
-/* eslint-disable react-hooks/exhaustive-deps */
+    // WebSocket instance
+    this.socket = null
+    // true when websocket connected
+    this.connected = false
+    // true when connected & can authenticate
+    this.handshaked = false
+    // true when connected & user logged in
+    this.authenticated = false
+    // true when disconnect() has been called
+    this.closeRequested = false
 
-const GameSocket = forwardRef(({ url, onEvent, onUpdate, setState, setUser, setConfig }, ref) => {
-  const renderCount = useRef(0)
+    // seconds to sleep before attempting to reconnect
+    this.reconnectDelay = 0
+    // setTimeout id for sleeping before reconnection
+    this.reconnectTimeout = -1
+    // number of started connection attempts since last successful connection
+    this.connectAttempts = 0
 
-  useEffect(() => {
-    if (++renderCount.current > 1) {
-      throw new Error("the parameters for GameSocket must not change")
-    }
-  }, [url, onEvent, onUpdate, setState, setConfig])
+    // promises for ongoing API calls
+    this.ongoingCalls = {}
 
-  if (typeof onEvent !== "function") throw new TypeError("onEvent must be a function")
-  if (typeof onUpdate !== "function") throw new TypeError("onUpdate must be a function")
-  if (typeof setState !== "function") throw new TypeError("setState must be a function")
-  if (typeof setUser !== "function") throw new TypeError("setUser must be a function")
-  if (typeof setConfig !== "function") throw new TypeError("setConfig must be a function")
+    // stored session for relogin
+    this.session = getSessionFromStorage()
 
-  const state = useRef({
-    socket: null,
-    connected: false,
-    handshaked: false,
-    authenticated: false,
-    closing: false,
-    reconnectTimeout: -1,
-    reconnectDelay: 0,
-    connectAttempts: 0,
-    ongoing: {},
-    session: false,
-  }).current
-
-  if (state.session === false) state.session = getSessionFromStorage()
-
-  const saveSession = (session) => {
-    state.session = session
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+    // stored game state JSON for delta updates
+    this.gameStateJson = {}
   }
 
-  const disconnected = () => {
-    state.connected = false
-    state.handshaked = false
-    state.authenticated = false
-    state.socket = null
-    for (const call of Object.values(state.ongoing)) {
-      if (!call.persistent) {
-        call.fail("disconnected", "lost connection to server")
-        delete state.ongoing[call.call_id]
-      }
+  disconnect() {
+    this.closeRequested = true
+    clearTimeout(this.reconnectTimeout)
+    if (this.socket !== null) this.socket.close()
+    this.handleDisconnection()
+  }
+
+  async login(name) {
+    await this.doAuthenticate({ name })
+  }
+
+  async logout() {
+    // delete the session from storage before contacting the server to ensure at least a client-side logout
+    saveSessionInStorage(null)
+    await this.call("log_out", {}, false)
+    this.authenticated = false
+    this.removeSession()
+  }
+
+  setSession(session) {
+    this.session = session
+    saveSessionInStorage(session)
+    this.onSessionChange(session)
+    // reset game state when session closes
+    if (session === null) {
+      this.gameStateJson = {}
+      this.dispatchUpdatedGameState()
     }
   }
 
-  const doConnect = () => {
+  removeSession() {
+    this.setSession(null)
+  }
+
+  connect() {
     log.debug("opening websocket")
-    const ws = new WebSocket(url)
-    state.socket = ws
-    state.connectAttempts++
+    const ws = new WebSocket(this.url)
+    this.socket = ws
+    this.connectAttempts++
 
-    ws.addEventListener("open", (e) => {
-      // send handshake
+    ws.addEventListener("open", () => {
+      // send handshake when connection is opened
       log.debug("connected, sending version")
-      state.connectAttempts = 0
-      state.connected = true
-      state.socket.send(JSON.stringify({
+      this.connectAttempts = 0
+      this.connected = true
+      this.socket.send(JSON.stringify({
         "version": UI_VERSION
       }))
     })
+
     ws.addEventListener("close", (e) => {
       // if we closed the connection ourselves, don't mind disconnection
-      if (state.closing) return
+      if (this.closeRequested) return
       // if the close is due to a protocol error, reload the page
       if (e.code === 1003) {
         log.error(`connection closed due to protocol error: ${e.reason}`)
-        handleProtocolError()
+        this.handleProtocolError()
         return
       }
       // update state and schedule a reconnect
       log.debug("connection lost")
-      disconnected()
-      state.reconnectDelay = Math.min(MAX_RECONNECT_INTERVAL, INITIAL_RECONNECT_INTERVAL * 2 ** state.connectAttempts)
-      state.reconnectTimeout = setTimeout(reconnectUpdate, Math.min(1000, state.reconnectDelay * 1000))
-      setState(state.connectAttempts > 0 ? "retrying_after" : "reconnecting", state.reconnectDelay)
+      this.handleDisconnection()
+      this.reconnectDelay = Math.min(MAX_RECONNECT_INTERVAL, INITIAL_RECONNECT_INTERVAL * 2 ** this.connectAttempts)
+      this.updateReconnectionTimer()
     })
+
     ws.addEventListener("message", (e) => {
       // if we are closing the connection, ignore messages
-      if (state.closing) return
+      if (this.closeRequested) return
       // all messages are JSON
       const data = JSON.parse(e.data)
-      if (!state.handshaked) {
-        // first response from server is the handshake response
+
+      // first response from server is the handshake response, process it first
+      if (!this.handshaked) {
         if ("error" in data) {
           // handshake failed, usually due to cached UI
           log.error(`handshake failed: ${data.error}`)
-          handleProtocolError()
+          this.handleProtocolError()
           return
         }
         // successful handshake returns the configuration
         log.debug("config received", data.config)
-        setConfig(data.config)
-        state.handshaked = true
+        this.onConfigChange(data.config)
+        this.handshaked = true
         // log in with existing session if one exists
-        if (state.session === null) {
-          setState("connected")
+        if (this.session !== null) {
+          // doRelogin will reauthenticate and mark the connection as connected when done
+          this.doRelogin()
         } else {
-          doRelogin()
+          this.onConnectionStateChange("connected")
         }
-      } else if ("disconnect" in data && data.disconnect === "connected_elsewhere") {
-        // server asked us to disconnect
+        return
+      }
+
+      // handle the server asking us to disconnect because another tab was opened
+      if ("disconnect" in data && data.disconnect === "connected_elsewhere") {
         log.debug("connected elsewhere, disconnecting")
-        doDisconnect()
-        setState("connected_elsewhere")
-      } else if ("call_id" in data) {
+        this.disconnect()
+        this.onConnectionStateChange("connected_elsewhere")
+        return
+      }
+
+      // handle responses to calls
+      else if ("call_id" in data) {
         // find the corresponding promise
-        const call = state.ongoing[data.call_id]
+        const call = this.ongoingCalls[data.call_id]
         if (!call) throw new Error("got response to unknown call from server")
         if (data.error) {
           // pass error to caller via promise
           call.fail(data.error, data.description)
           // if error occurs due to missing authentication, reset the session
           // TODO: this might cause problems if some kind of desync can cause
-          // calls to be made while the socket is not authenticated; this could
-          // cause the saved session to be lost even if it is valid
+          //  calls to be made while the socket is not authenticated; this could
+          //  cause the saved session to be lost even if it is valid
           if (data.error === "not_authenticated") {
-            saveSession(null)
-            setState("connected")
-            setUser(null)
+            this.authenticated = false
+            this.removeSession()
+            this.onConnectionStateChange("connected")
           }
         } else {
           // pass result to caller via promise
           call.success(data)
         }
         // call finished, forget it
-        delete state.ongoing[data.call_id]
-      } else {
-        if ("events" in data) {
-          for (const event of data.events) {
-            log.debug("EVENT", event)
-            onEvent(event)
-          }
+        delete this.ongoingCalls[data.call_id]
+        return
+      }
+
+      // handle state updates
+      log.debug("UPDATE", data)
+
+      // reset all game state data when leaving a game
+      if (data.game === null && this.gameStateJson.game !== null)
+        this.gameStateJson = {}
+
+      let updated = false
+      for (const field of ["game", "options", "hand", "players"]) {
+        if (field in data) {
+          this.gameStateJson[field] = data[field]
+          updated = true
         }
-        log.debug("UPDATE", data)
-        onUpdate(data)
+      }
+      if (updated) this.dispatchUpdatedGameState()
+
+      // handle game events
+      if ("events" in data) {
+        for (const event of data.events) {
+          log.debug("EVENT", event)
+          this.onGameEvent(event)
+        }
       }
     })
   }
 
-  const reconnectUpdate = () => {
-    state.reconnectDelay -= 1
-    if (state.reconnectDelay <= 0) {
-      setState(state.connectAttempts > 0 ? "retrying" : "reconnecting")
-      doConnect()
+  dispatchUpdatedGameState() {
+    if (["game", "options", "hand", "players"].some(attr => !(attr in this.gameStateJson)) || this.gameStateJson.game === null) {
+      this.onGameStateChange(null)
     } else {
-      setState("retrying_after", Math.ceil(state.reconnectDelay))
-      state.reconnectTimeout = setTimeout(reconnectUpdate, Math.min(1000, state.reconnectDelay * 1000))
+      this.onGameStateChange(new GameState(this.session, this.gameStateJson))
     }
   }
 
-  const doDisconnect = () => {
-    state.closing = true
-    if (state.socket !== null) state.socket.close()
-    disconnected()
-  }
-  
-  const handleProtocolError = () => {
-    doDisconnect()
-    setState("protocol_error")
-    setTimeout(() => window.location.reload(), 2000)
-  }
-
-  const doRelogin = async () => {
+  async doRelogin() {
     try {
-      await doAuthenticate({
-        id: state.session.id,
-        token: state.session.token
+      await this.doAuthenticate({
+        id: this.session.id,
+        token: this.session.token
       })
     } catch (error) {
       if (error.code !== "disconnected") {
         // relogin failed, reset session
-        saveSession(null)
-        setState("connected")
-        setUser(null)
+        this.removeSession()
+        // set the connection state so that the client knows it can reauthenticate manually
+        this.onConnectionStateChange("connected")
       }
     }
   }
 
-  const doAuthenticate = async (params) => {
-    const response = await doCall("authenticate", params, false)
-    const session = {
-      id: response.id,
-      token: response.token,
-      name: response.name
-    }
-    saveSession(session)
-    state.authenticated = true
-    setState("connected")
-    setUser(session)
-    // send persistent calls from previous connection
-    for (const call of Object.values(state.ongoing)) {
+  async doAuthenticate(params) {
+    const response = await this.call("authenticate", params, false)
+    const session = new UserSession(response)
+    this.authenticated = true
+    // send persistent calls from previous connection (before notifying the client, as that might cause new calls)
+    for (const call of Object.values(this.ongoingCalls)) {
       call.send()
     }
+    this.setSession(session)
+    this.onConnectionStateChange("connected")
     return true
   }
 
-  const doLogout = async () => {
-    await doCall("log_out", {}, false)
-    state.authenticated = false
-    saveSession(null)
-    setState("connected")
-    setUser(null)
-    return true
+  updateReconnectionTimer() {
+    if (this.reconnectDelay <= 0) {
+      this.onConnectionStateChange(this.connectAttempts > 0 ? "retry_reconnect" : "reconnect")
+      this.connect()
+    } else {
+      this.onConnectionStateChange(this.connectAttempts > 0 ? "retry_sleep" : "reconnect", this.reconnectDelay)
+      this.reconnectTimeout = setTimeout(() => {
+        this.reconnectDelay -= 1
+        this.updateReconnectionTimer()
+      }, Math.min(1000, this.reconnectDelay * 1000))
+    }
   }
 
-  const doCall = (action, data = {}, persistent = false) => {
+  handleDisconnection() {
+    this.connected = false
+    this.handshaked = false
+    this.authenticated = false
+    this.socket = null
+    for (const call of Object.values(this.ongoingCalls)) {
+      if (!call.persistent) {
+        call.fail("disconnected", "lost connection to server")
+        delete this.ongoingCalls[call.call_id]
+      }
+    }
+  }
+
+  handleProtocolError() {
+    this.disconnect()
+    this.onConnectionStateChange("protocol_error")
+    setTimeout(() => window.location.reload(), 2000)
+  }
+
+  call(action, data = {}, persistent = false) {
+    const thisSocket = this
     return new Promise((resolve, reject) => {
       const call_id = uniqueId()
       const request = {
@@ -268,43 +315,19 @@ const GameSocket = forwardRef(({ url, onEvent, onUpdate, setState, setUser, setC
         },
         persistent,
         send() {
-          state.socket.send(JSON.stringify(request))
+          thisSocket.socket.send(JSON.stringify(request))
         }
       }
       log.debug(`${call_id} > ${action}`, data)
 
-      const canDo = action === "authenticate" ? state.handshaked : state.authenticated
-      if (!canDo && !persistent) {
+      const canPerformInCurrentState = action === "authenticate" ? this.handshaked : this.authenticated
+      if (!canPerformInCurrentState && !persistent) {
         call.fail("disconnected", "not connected to server")
         return
       }
 
-      state.ongoing[call_id] = call
-      if (canDo) call.send()
+      this.ongoingCalls[call_id] = call
+      if (canPerformInCurrentState) call.send()
     })
   }
-
-  useEffect(() => {
-    doConnect()
-    return () => {
-      clearTimeout(state.reconnectTimeout)
-      doDisconnect()
-    }
-  }, [])
-
-  useImperativeHandle(ref, () => ({
-    login(name) {
-      return doAuthenticate({ name })
-    },
-    logout() {
-      return doLogout()
-    },
-    call(action, data = {}, persistent = false) {
-      return doCall(action, data, persistent)
-    }
-  }), [])
-
-  return null
-})
-
-export default GameSocket
+}

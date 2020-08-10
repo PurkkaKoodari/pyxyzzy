@@ -42,8 +42,17 @@ class Player {
     }
 }
 
-class Game {
+export class UserSession {
     constructor(stateJson) {
+        this.id = stateJson.id
+        this.name = stateJson.name
+        this.token = stateJson.token
+    }
+}
+
+export class GameState {
+    constructor(user, stateJson) {
+        this.user = user
         this.state = stateJson.game.state
         this.code = stateJson.game.code
         this.currentRound = stateJson.game.current_round && new Round(stateJson.game.current_round)
@@ -78,9 +87,7 @@ class Game {
         return this.state === "playing" && this.currentRound.whiteCards === null && this.hand.length > 0
     }
 
-    shouldJudge(userId) {
-        return this.state === "judging" && this.cardCzar.id === userId
+    get shouldJudge() {
+        return this.state === "judging" && this.cardCzar.id === this.user.id
     }
 }
-
-export default Game

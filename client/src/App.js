@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import "react-toastify/dist/ReactToastify.css"
 import "./App.scss"
 import ConnectingScreen from "./ConnectingScreen"
@@ -7,66 +7,60 @@ import GameScreen from "./GameScreen"
 import GameSocket from "./GameSocket"
 import LoginScreen from "./LoginScreen"
 import { ConfigContext, ConnectionContext, UserContext } from "./contexts"
-import GameState from "./state"
 
 const SERVER_URL = "ws://localhost:8080/ws"
 
+class EventHandler {
+  constructor(onChatMessagesChange) {
+    this.chatMessages = []
+    this.onChatMessagesChange = onChatMessagesChange
+  }
+
+  addChatMessage(message) {
+    this.chatMessages.push(message)
+    this.onChatMessagesChange(this.chatMessages)
+  }
+
+  handle(event) {
+    switch (event.type) {
+      // TODO
+    }
+  }
+}
+
 const App = () => {
-  const [connectionState, setConnectionState] = useState("connecting")
+  const [connectionState, setConnectionState] = useState("connect")
   const [config, setConfig] = useState(null)
   const [retryTime, setRetryTime] = useState(0)
   const [user, setUser] = useState(null)
 
-  // this is definitely against some rule of React, but sockets are imperative :/
-  const gameRef = useRef(null)
-
+  const [connection, setConnection] = useState(null)
   const [game, setGame] = useState(null)
   const [chatMessages, setChatMessages] = useState([])
 
-  const connectionRef = useRef()
+  useEffect(() => {
+    const eventHandler = new EventHandler(setChatMessages)
+    const connection = new GameSocket(SERVER_URL)
 
-  const handleConnectionState = useCallback((state, reconnectIn) => {
-    setConnectionState(state)
-    setRetryTime(reconnectIn)
-  }, [])
-  const handleConfig = useCallback((config) => {
-    setConfig(config)
-  }, [])
-  const handleUser = useCallback((user) => {
-    setUser(user)
-    // if we get logged out, forget the game
-    if (!user) setGame(null)
-  }, [])
+    connection.onConnectionStateChange = (state, reconnectIn) => {
+      setConnectionState(state)
+      setRetryTime(reconnectIn)
+    }
+    connection.onConfigChange = config => setConfig(config)
+    connection.onSessionChange = user => setUser(user)
 
-  const handleUpdate = useCallback((update) => {
-    // if we receive game=null, that means we've left the game
-    if ("game" in update && !update.game) {
-      setGame(null)
-      return
-    }
-    // update only relevant fields of game and avoid unnecessary updates
-    let updated = gameRef.current
-    for (const field of ["game", "options", "hand", "players"]) {
-      if (field in update) {
-        updated = {
-          ...updated,
-          [field]: update[field]
-        }
-      }
-    }
-    if (updated !== gameRef.current) {
-      gameRef.current = updated
-      setGame(new GameState(updated))
-    }
-  }, [])
+    connection.onGameStateChange = gameState => setGame(gameState)
+    connection.onGameEvent = event => eventHandler.handle(event)
 
-  const handleEvent = useCallback((event) => {
-    
+    connection.connect()
+    setConnection(connection)
+
+    return () => connection.disconnect()
   }, [])
 
   let gameScreen = null, connectingScreen = null
   if (user && game) {
-    gameScreen = <GameScreen game={game} />
+    gameScreen = <GameScreen game={game} chatMessages={chatMessages} />
   } else if (user) {
     gameScreen = <GameList />
   } else if (config) {
@@ -82,19 +76,10 @@ const App = () => {
 
   return (
     <ConfigContext.Provider value={config}>
-      <ConnectionContext.Provider value={connectionRef.current}>
+      <ConnectionContext.Provider value={connection}>
         <UserContext.Provider value={user}>
           {gameScreen}
           {connectingScreen}
-          <GameSocket
-            ref={connectionRef}
-            url={SERVER_URL}
-            connect={true}
-            onUpdate={handleUpdate}
-            onEvent={handleEvent}
-            setState={handleConnectionState}
-            setUser={handleUser}
-            setConfig={handleConfig} />
         </UserContext.Provider>
       </ConnectionContext.Provider>
     </ConfigContext.Provider>

@@ -1,4 +1,4 @@
-import React, {Component, useContext} from "react"
+import React, {Component} from "react"
 import "./GameScreen.scss"
 import {range, unknownError} from "./utils"
 import {ConnectionContext, UserContext} from "./contexts"
@@ -6,8 +6,6 @@ import GameOptions from "./GameOptions"
 import {BlackCard, WhiteCard, WhiteCardGroup, WhiteCardPlaceholder} from "./cards"
 
 const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, setSelectedWhitePos }) => {
-  const user = useContext(UserContext)
-
   let blackCard = null, whiteCards = null
   if (game.currentRound) {
     blackCard = <BlackCard card={game.currentRound.blackCard} />
@@ -21,7 +19,7 @@ const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, setSelec
               key={group[0].id}
               cards={group.map(card => <WhiteCard key={card.id} card={card}/>)}
               active={won || selected}
-              onClick={() => game.shouldJudge(user.id) && setSelectedWhitePos(pos)} />
+              onClick={() => game.shouldJudge && setSelectedWhitePos(pos)} />
         )
       })
     } else if (game.state === "playing" && (game.shouldPlayWhiteCards || game.currentRound.whiteCards)) {
