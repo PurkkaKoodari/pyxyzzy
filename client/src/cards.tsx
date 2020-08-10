@@ -187,10 +187,13 @@ export const WhiteCardPlaceholder = ({ active, onClick, text }: { active?: boole
   )
 }
 
-export const WhiteCardGroup = ({ cards, active, onClick }: { cards: any[], active?: boolean, onClick?: () => void }) => {
+export const WhiteCardGroup = ({ cards, active, onClick, actions }: { cards: any[], active?: boolean, onClick?: () => void, actions?: any }) => {
   return (
-    <div className={`group ${cards.length > 1 ? "multi" : ""} ${active ? "selected" : ""}`} onClick={onClick}>
-      {cards}
+    <div className={`group ${cards.length > 1 ? "multi" : ""} ${active ? "selected" : ""}`}>
+      <div className="group-cards" onClick={onClick}>
+        {cards}
+      </div>
+      {actions && <div className="actions">{actions}</div>}
     </div>
   )
 }

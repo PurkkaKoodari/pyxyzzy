@@ -138,7 +138,7 @@ export class GameState {
     }
 
     get shouldPlayWhiteCards() {
-        return this.state === "playing" && this.currentRound!.whiteCards === null && this.hand.length > 0
+        return this.state === "playing" && this.cardCzar.id !== this.user.id && this.currentRound!.whiteCards === null && this.hand.length > 0
     }
 
     get shouldJudge() {

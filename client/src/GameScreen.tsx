@@ -8,7 +8,18 @@ import {GameState, UserSession, WhiteCard} from "./state"
 import GameSocket from "./GameSocket"
 import {GameEventHandler} from "./events"
 
-const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, selectPos }: { game: GameState, chosenWhites: (WhiteCard | null)[], selectedWhitePos: number | null, unselectCard: (pos: number) => void, selectPos: (pos: number) => void }) => {
+interface CardViewProps {
+  game: GameState
+  chosenWhites: (WhiteCard | null)[]
+  selectedWhitePos: number | null
+  playing: boolean
+  unselectCard(pos: number): void
+  selectPos(pos: number): void
+  confirmPlay(): void
+  confirmJudge(): void
+}
+
+const CardView = ({ game, chosenWhites, selectedWhitePos, playing, unselectCard, selectPos, confirmPlay, confirmJudge }: CardViewProps) => {
   let blackCard = null, whiteCards = null
   if (game.currentRound) {
     blackCard = <BlackCardView card={game.currentRound.blackCard} />
@@ -17,12 +28,16 @@ const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, selectPo
       whiteCards = game.currentRound.whiteCards.map((group: WhiteCard[], pos: number) => {
         const won = game.state === "round_ended" && game.currentRound!.winningCardsId === group[0].id
         const selected = selectedWhitePos === pos
+        const actions = selected ? (
+            <button type="button" disabled={playing} onClick={() => confirmJudge()}>Confirm selection</button>
+        ) : null
         return (
           <WhiteCardGroup
               key={group[0].id}
               cards={group.map(card => <WhiteCardView key={card.id} card={card}/>)}
               active={won || selected}
-              onClick={() => game.shouldJudge && selectPos(pos)} />
+              onClick={() => game.shouldJudge && !playing && selectPos(pos)}
+              actions={actions} />
         )
       })
     } else if (game.state === "playing" && (game.shouldPlayWhiteCards || game.currentRound.whiteCards)) {
@@ -33,7 +48,7 @@ const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, selectPo
             <WhiteCardView
                 key={cards[pos]!.id}
                 card={cards[pos]!}
-                onClick={() => game.shouldPlayWhiteCards && unselectCard(pos)} />
+                onClick={() => game.shouldPlayWhiteCards && !playing && unselectCard(pos)} />
           )
         } else {
           return (
@@ -45,7 +60,13 @@ const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, selectPo
           )
         }
       })
-      whiteCards = <WhiteCardGroup cards={placeholders} />
+      const allSelected = chosenWhites.every(card => card !== null)
+      const actions = game.shouldPlayWhiteCards ? (
+          <button type="button" onClick={() => confirmPlay()} disabled={playing || !allSelected}>
+            {game.currentRound.pickCount > 1 ? "Confirm selections" : "Confirm selection"}
+          </button>
+      ) : null
+      whiteCards = <WhiteCardGroup cards={placeholders} actions={actions} />
     }
   }
   return (
@@ -56,7 +77,14 @@ const CardView = ({ game, chosenWhites, selectedWhitePos, unselectCard, selectPo
   )
 }
 
-const HandView = ({ game, chosenWhites, selectCard }: { game: GameState, chosenWhites: (WhiteCard | null)[], selectCard: (card: WhiteCard) => void }) => {
+interface HandViewProps {
+  game: GameState
+  chosenWhites: (WhiteCard | null)[]
+  playing: boolean
+  selectCard: (card: WhiteCard) => void
+}
+
+const HandView = ({ game, chosenWhites, playing, selectCard }: HandViewProps) => {
   if (!game.shouldPlayWhiteCards)
     return null
 
@@ -67,7 +95,7 @@ const HandView = ({ game, chosenWhites, selectCard }: { game: GameState, chosenW
           key={card.id}
           card={card}
           picked={picked}
-          onClick={() => selectCard(card)} />
+          onClick={() => !playing && selectCard(card)} />
     )
   })
   return (
@@ -87,6 +115,7 @@ type GameScreenState = {
   currentGameState: string | null
   chosenWhites: (WhiteCard | null)[] | null
   selectedWhitePos: number | null
+  playing: boolean
 }
 
 class GameScreen extends Component<GameScreenProps, GameScreenState> {
@@ -95,6 +124,7 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
     currentGameState: null,
     chosenWhites: null,
     selectedWhitePos: null,
+    playing: false,
   }
 
   static getDerivedStateFromProps(props: GameScreenProps, state: GameScreenState) {
@@ -188,6 +218,47 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
       })
     }
 
+    const confirmPlay = async () => {
+      // ensure valid selections
+      if (!game.shouldPlayWhiteCards || !this.state.chosenWhites!.every(card => card !== null))
+        return
+      // disable UI before call
+      this.setState({ playing: true })
+      try {
+        // TODO: support for blanks
+        await connection.call("play_white", {
+          round: game.roundId,
+          cards: this.state.chosenWhites!.map(card => ({
+            id: card!.id,
+          })),
+        })
+      } catch (error) {
+        unknownError(error)
+      } finally {
+        // re-enable UI
+        this.setState({ playing: false })
+      }
+    }
+
+    const confirmJudge = async () => {
+      // ensure a valid state
+      if (!game.shouldJudge || this.state.selectedWhitePos === null || this.state.selectedWhitePos >= game.currentRound!.whiteCards!.length)
+        return
+      // disable UI before call
+      this.setState({ playing: true })
+      try {
+        await connection.call("choose_winner", {
+          round: game.roundId,
+          winner: game.currentRound!.whiteCards![this.state.selectedWhitePos][0].id,
+        })
+      } catch (error) {
+        unknownError(error)
+      } finally {
+        // re-enable UI
+        this.setState({ playing: false })
+      }
+    }
+
     let controls = null
     if (user.id === game.host.id) {
       controls =
@@ -196,11 +267,8 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
           </button>
     }
 
-    const isCzar = game.running && game.cardCzar.id === user.id
-    const isHost = game.players && game.host.id === user.id
-
     return (
-        <div className={`in-game game-state-${game.state} ${isCzar ? "is-czar" : ""} ${isHost ? "is-host" : ""} ${game.shouldPlayWhiteCards ? "play-white" : ""}`}>
+        <div className={`in-game game-state-${game.state} ${game.shouldJudge ? "should-judge" : ""} ${game.shouldPlayWhiteCards ? "should-play" : ""}`}>
           <div className="nav">
             <div className="game-controls">
               {controls}
@@ -218,12 +286,16 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
           <CardView
               game={game}
               chosenWhites={this.state.chosenWhites!}
-              unselectCard={unselectCard}
               selectedWhitePos={this.state.selectedWhitePos}
-              selectPos={pos => this.setState({selectedWhitePos: pos})} />
+              playing={this.state.playing}
+              unselectCard={unselectCard}
+              selectPos={pos => this.setState({selectedWhitePos: pos})}
+              confirmPlay={confirmPlay}
+              confirmJudge={confirmJudge} />
           <HandView
               game={game}
               chosenWhites={this.state.chosenWhites!}
+              playing={this.state.playing}
               selectCard={selectCard} />
         </div>
     )

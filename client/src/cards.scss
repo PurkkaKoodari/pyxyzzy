@@ -15,18 +15,32 @@ $activeWhiteCardGroup: #536099;
 
 .cards .group {
     display: flex;
+    flex-direction: column;
     margin: 5px 0 0 5px;
 
-    &.multi {
+    .group-cards {
+        display: flex;
+    }
+    &.multi .group-cards {
         background-color: $whiteCardGroup;
         padding: 0 5px 5px 0;
-
-        &.selected {
-            background-color: $activeWhiteCardGroup !important;
-        }
+    }
+    &.multi.selected .group-cards {
+        background-color: $activeWhiteCardGroup !important;
     }
     &.selected .white.card {
         background-color: $activeWhiteCard !important;
+    }
+    .actions {
+        display: flex;
+        padding: 4px 0 0 5px;
+
+        button {
+            flex: 1 1 auto;
+        }
+    }
+    &.multi .actions {
+        padding-left: 0;
     }
 }
 .card {
@@ -152,7 +166,7 @@ $activeWhiteCardGroup: #536099;
         }
     }
 }
-.in-game.game-state-playing.play-white .cards {
+.in-game.game-state-playing.should-play .cards {
     .white.card {
         cursor: grab;
     }
@@ -163,11 +177,11 @@ $activeWhiteCardGroup: #536099;
         background-color: $hoveredWhiteCard;
     }
 }
-.in-game.game-state-judging.is-czar .cards {
+.in-game.game-state-judging.should-judge .cards {
     .white.card, .group.multi {
         cursor: pointer;
     }
-    .group.multi:hover {
+    .group.multi:hover .group-cards {
         background-color: $hoveredWhiteCardGroup;
     }
     .white.card:hover, .group.multi:hover .white.card {
