@@ -9,7 +9,6 @@ import log from "loglevel"
 Modal.setAppElement("#root")
 
 toast.configure({
-    hideProgressBar: true,
     autoClose: 8000,
 })
 
