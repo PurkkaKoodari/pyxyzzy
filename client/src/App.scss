@@ -64,3 +64,14 @@ h3 {
 h4 {
     font-size: 1rem;
 }
+button {
+    background-color: #eeeeee;
+    color: #000000;
+    border: 2px outset #dddddd;
+}
+button:disabled {
+    color: #999999;
+}
+button:active {
+    border-style: inset;
+}
