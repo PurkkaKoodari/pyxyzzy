@@ -118,7 +118,7 @@ const useCardTextSize = (CardComponent, card, givenTextSize) => {
   useEffect(() => {
     if (givenTextSize === undefined)
       computeCardTextSize(BlackCard, card).then(fontSize => setComputedTextSize(fontSize))
-  }, [card])
+  }, [card, givenTextSize])
 
   return givenTextSize || computedTextSize || MAXIMUM_TEXT_SIZE
 }
