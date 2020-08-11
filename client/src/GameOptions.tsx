@@ -110,7 +110,8 @@ const OptionsInput = ({ game, name, type, ...attrs }: OptionsInputProps) => {
                 name={`cardpacks-${pack.id}`}
                 value={packs.includes(pack.id)}
                 handleChange={handlePackChange(pack.id)}
-                label={pack.name} />
+                label={pack.name}
+                title={`${pack.black_cards} black cards\n${pack.white_cards} white cards`} />
           ))}
         </>
     )
