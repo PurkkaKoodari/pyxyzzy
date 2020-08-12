@@ -10,7 +10,7 @@ import {ConfigContext, ConnectionContext, EventContext, UserContext} from "./con
 import {GameState, UserSession} from "./state"
 import {GameEventHandler} from "./events"
 
-const SERVER_URL = "ws://localhost:8080/ws"
+const SERVER_URL = `ws://${window.location.hostname}:8080/ws`
 
 const App = () => {
   const [connectionState, setConnectionState] = useState("connect")
