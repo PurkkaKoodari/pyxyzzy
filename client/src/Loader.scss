@@ -17,8 +17,8 @@
 .lds-ripple {
     display: inline-block;
     position: relative;
-    width: 80px;
-    height: 80px;
+    width: 75px;
+    height: 75px;
 
     div {
         position: absolute;
@@ -34,9 +34,17 @@
 }
 
 @keyframes lds-ripple {
+    // reduce white flashing in some situations by starting the animation a bit late
     0% {
-        top: 36px;
-        left: 36px;
+        top: 33.5px;
+        left: 33.5px;
+        width: 8px;
+        height: 8px;
+        opacity: 0;
+    }
+    10% {
+        top: 33.5px;
+        left: 33.5px;
         width: 8px;
         height: 8px;
         opacity: 1;
@@ -44,8 +52,8 @@
     100% {
         top: 0px;
         left: 0px;
-        width: 80px;
-        height: 80px;
+        width: 75px;
+        height: 75px;
         opacity: 0;
     }
 }
