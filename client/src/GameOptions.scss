@@ -19,7 +19,7 @@ $togglerHeight: 1.6rem;
             &.top {
                 border-width: 0 0 1px;
                 position: relative;
-                z-index: $navbarZ;
+                z-index: $optionsZ + 1;
 
                 .arrow {
                     display: inline-block;

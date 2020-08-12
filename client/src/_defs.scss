@@ -4,8 +4,9 @@ $navbarZ: 2000;
 $dialogZ: 3000;
 $connectingZ: 4000;
 
-$themeGlobalBg: white;
-$themeNavbarBg: #ddd;
+$themeGlobalBg: #ffffff;
+$themeNavbarBg: #dddddd;
+$themeHandBg: #eeeeee;
 
 @mixin nav-bar($class) {
     #{$class} {
@@ -25,7 +26,9 @@ $themeNavbarBg: #ddd;
         flex-wrap: wrap-reverse;
         border-bottom: 1px solid #aaa;
         background: $themeNavbarBg;
-        position: relative;
+        position: sticky;
+        top: 0;
+        left: 0;
         z-index: $navbarZ;
     }
 }
