@@ -64,7 +64,7 @@ const MAXIMUM_TEXT_SIZE = 18
 
 // card text sizes are cached here (as promises, so that if the size is queried before the computation finishes, we can
 // just await the previous calculation and not start another)
-const cardTextSizeCache: { [key: string]: Promise<number> } = {}
+const cardTextSizeCache: { [key: string]: Promise<number> | number } = {}
 
 // since the #card-size-measurement container is shared by the code below, and the rendering process requires an
 // async function, we must lock access to the container
@@ -73,11 +73,21 @@ let fontSizeComputerLock = new Lock()
 interface CardProps<C extends AbstractCard> {
   card: C
   givenTextSize?: number
+  scale?: number
+}
+
+const getCachedTextSize = (card: AbstractCard) => {
+  if (!(card.fontSizeCacheKey in cardTextSizeCache))
+    return null
+  const size = cardTextSizeCache[card.fontSizeCacheKey]
+  return typeof size === "number" ? size : null
 }
 
 const computeCardTextSize = async <C extends AbstractCard>(CardComponent: ComponentType<CardProps<C>>, card: C) => {
-  if (card.fontSizeCacheKey in cardTextSizeCache)
-    return await cardTextSizeCache[card.fontSizeCacheKey]
+  if (card.fontSizeCacheKey in cardTextSizeCache) {
+    const size = cardTextSizeCache[card.fontSizeCacheKey]
+    return typeof size === "number" ? size : await size
+  }
 
   const promise = fontSizeComputerLock.acquire(async () => {
     const container = document.getElementById("card-size-measurement")!
@@ -114,7 +124,9 @@ const computeCardTextSize = async <C extends AbstractCard>(CardComponent: Compon
     return bestFitting
   })
   cardTextSizeCache[card.fontSizeCacheKey] = promise
-  return await promise
+  const size = await promise
+  cardTextSizeCache[card.fontSizeCacheKey] = size
+  return size
 }
 
 // shared hook for BlackCard and WhiteCard for text size computation
@@ -122,14 +134,16 @@ const useCardTextSize = <C extends AbstractCard>(CardComponent: ComponentType<Ca
   const [computedTextSize, setComputedTextSize] = useState<number | null>(null)
 
   useEffect(() => {
-    if (givenTextSize === undefined)
+    if (givenTextSize === undefined && getCachedTextSize(card) === null)
       computeCardTextSize(CardComponent, card).then(fontSize => setComputedTextSize(fontSize))
   }, [CardComponent, card, givenTextSize])
 
-  return givenTextSize || computedTextSize || MAXIMUM_TEXT_SIZE
+  return givenTextSize || getCachedTextSize(card) || computedTextSize || MAXIMUM_TEXT_SIZE
 }
 
-export const BlackCardView = ({ card, givenTextSize, scale }: { card: BlackCard, givenTextSize?: number, scale?: number }) => {
+interface BlackCardViewProps extends CardProps<BlackCard> {}
+
+export const BlackCardView = ({ card, givenTextSize, scale }: BlackCardViewProps) => {
   const textSize = useCardTextSize(BlackCardView, card, givenTextSize)
 
   if (scale === undefined)
@@ -149,7 +163,7 @@ export const BlackCardView = ({ card, givenTextSize, scale }: { card: BlackCard,
       </div>
   }
   return (
-    <div className="black card">
+    <div className="black card" style={{fontSize: `${100 * scale}px`}}>
       <div className="text" style={{fontSize: `${textSize * scale}px`}}>
         {processCardText(card.text, true)}
       </div>
@@ -161,7 +175,12 @@ export const BlackCardView = ({ card, givenTextSize, scale }: { card: BlackCard,
   )
 }
 
-export const WhiteCardView = ({ card, picked, givenTextSize, scale, onClick }: { card: WhiteCard, picked?: boolean, givenTextSize?: number, scale?: number, onClick?: () => void }) => {
+interface WhiteCardViewProps extends CardProps<WhiteCard> {
+  disabled?: boolean
+  onClick?: () => void
+}
+
+export const WhiteCardView = ({ card, disabled, givenTextSize, scale, onClick }: WhiteCardViewProps) => {
   const textSize = useCardTextSize(WhiteCardView, card, givenTextSize)
 
   if (scale === undefined)
@@ -169,7 +188,10 @@ export const WhiteCardView = ({ card, picked, givenTextSize, scale, onClick }: {
 
   return (
     // everything scales relative to the fontSize on the card
-    <div className={`white card ${picked ? "picked" : ""}`} style={{fontSize: `${100 * scale}px`}} onClick={onClick}>
+    <div
+        className={`white card ${disabled ? "disabled" : ""}`}
+        style={{fontSize: `${100 * scale}px`}}
+        onClick={onClick}>
       <div className="text" style={{fontSize: `${textSize * scale}px`}}>
         {processCardText(card.text, false)}
       </div>
@@ -180,17 +202,43 @@ export const WhiteCardView = ({ card, picked, givenTextSize, scale, onClick }: {
   )
 }
 
-export const WhiteCardPlaceholder = ({ active, onClick, text }: { active?: boolean, onClick?: () => void, text: string }) => {
+interface WhiteCardPlaceholderProps {
+  active?: boolean
+  text: string
+  scale?: number
+  onClick?: () => void
+}
+
+export const WhiteCardPlaceholder = ({ active, text, scale, onClick }: WhiteCardPlaceholderProps) => {
+  if (scale === undefined)
+    scale = 1
+
   return (
-    <div className={`placeholder white card ${active ? "selected" : ""}`} onClick={onClick}>
+    <div
+        className={`placeholder white card ${active ? "selected" : ""}`}
+        style={{fontSize: `${100 * scale}px`}}
+        onClick={onClick}>
       <div className="text">{text}</div>
     </div>
   )
 }
 
-export const WhiteCardGroup = ({ cards, active, onClick, actions }: { cards: any[], active?: boolean, onClick?: () => void, actions?: any }) => {
+interface WhiteCardGroupProps {
+  cards: any[]
+  active?: boolean
+  actions?: any
+  scale?: number
+  onClick?: () => void
+}
+
+export const WhiteCardGroup = ({ cards, active, actions, scale, onClick }: WhiteCardGroupProps) => {
+  if (scale === undefined)
+    scale = 1
+
   return (
-    <div className={`group ${cards.length > 1 ? "multi" : ""} ${active ? "selected" : ""}`}>
+    <div
+        className={`group ${cards.length > 1 ? "multi" : ""} ${active ? "selected" : ""}`}
+        style={{fontSize: `${100 * scale}px`}}>
       <div className="group-cards" onClick={onClick}>
         {cards}
       </div>

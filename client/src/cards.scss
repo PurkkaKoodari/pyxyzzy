@@ -13,17 +13,21 @@ $whiteCardGroup: #999999;
 $hoveredWhiteCardGroup: #787e99;
 $activeWhiteCardGroup: #536099;
 
+@function scale-card($measure, $fontSize: 1.0) {
+    @return $measure / 1px * 0.01em / $fontSize;
+}
 .cards .group {
+    font-size: 100px; // everything scales relative to this
     display: flex;
     flex-direction: column;
-    margin: 5px 0 0 5px;
+    margin: scale-card(5px) 0 0 scale-card(5px);
 
     .group-cards {
         display: flex;
     }
     &.multi .group-cards {
         background-color: $whiteCardGroup;
-        padding: 0 5px 5px 0;
+        padding: 0 scale-card(5px) scale-card(5px) 0;
     }
     &.multi.selected .group-cards {
         background-color: $activeWhiteCardGroup !important;
@@ -33,9 +37,10 @@ $activeWhiteCardGroup: #536099;
     }
     .actions {
         display: flex;
-        padding: 4px 0 0 5px;
+        padding: scale-card(4px) 0 0 scale-card(5px);
 
         button {
+            font-size: 1rem;
             flex: 1 1 auto;
         }
     }
@@ -43,10 +48,8 @@ $activeWhiteCardGroup: #536099;
         padding-left: 0;
     }
 }
-@function scale-card($measure, $fontSize: 1.0) {
-    @return $measure / 1px * 0.01em / $fontSize;
-}
 .card {
+    flex: none;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-size: 100px; // everything scales relative to this
     border: 1px solid $cardBorder;
@@ -61,7 +64,7 @@ $activeWhiteCardGroup: #536099;
         color: $whiteCardText;
         margin: scale-card(5px) 0 0 scale-card(5px);
 
-        &.picked {
+        &.disabled {
             opacity: 0.5;
         }
         &.placeholder {
@@ -170,6 +173,9 @@ $activeWhiteCardGroup: #536099;
     .white.card {
         cursor: grab;
     }
+    .white.disabled.card {
+        cursor: default;
+    }
     .white.placeholder.card {
         cursor: pointer;
     }
@@ -177,14 +183,21 @@ $activeWhiteCardGroup: #536099;
         background-color: $hoveredWhiteCard;
     }
 }
-.in-game.game-state-judging.should-judge .cards {
-    .white.card, .group.multi {
-        cursor: pointer;
+.in-game.game-state-judging.should-judge {
+    .table {
+        .white.card, .group.multi {
+            cursor: pointer;
+        }
+        .group.multi:hover .group-cards {
+            background-color: $hoveredWhiteCardGroup;
+        }
+        .white.card:hover, .group.multi:hover .white.card {
+            background-color: $hoveredWhiteCard;
+        }
     }
-    .group.multi:hover .group-cards {
-        background-color: $hoveredWhiteCardGroup;
-    }
-    .white.card:hover, .group.multi:hover .white.card {
-        background-color: $hoveredWhiteCard;
+    .hand {
+        .white.card {
+            cursor: not-allowed;
+        }
     }
 }

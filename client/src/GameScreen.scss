@@ -30,19 +30,35 @@
             margin-right: 0.5rem;
         }
     }
+    .instructions {
+        border-bottom: 1px solid #aaa;
+        margin: 0;
+        padding: 0 5px;
+        text-align: center;
+    }
     .cards {
         display: flex;
         flex-wrap: wrap;
+        align-items: flex-start;
+        align-content: flex-start;
     }
     .table {
+        display: flex;
         flex-grow: 1;
+        padding-bottom: 5px;
+
+        &.wrap-black {
+            flex-direction: column;
+        }
     }
     .hand {
-        margin-bottom: 5px;
+        background-color: $themeHandBg;
+        padding-bottom: 5px;
 
         h3 {
             border-top: 1px solid black;
             margin: 0;
+            padding: 0 10px;
             text-align: center;
             text-transform: uppercase;
         }

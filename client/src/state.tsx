@@ -126,6 +126,12 @@ export class GameState {
         return this.player(this.currentRound.cardCzarId)
     }
 
+    get roundWinner(): Player | null {
+        if (!this.currentRound)
+            throw new Error("game is not running")
+        return this.currentRound.winningPlayerId ? this.player(this.currentRound.winningPlayerId) : null
+    }
+
     player(id: string): Player {
         const player = this.players.find(player => player.id === id)
         if (!player)
