@@ -403,7 +403,13 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
   }
 }
 
-const getWindowWidth = () => document.documentElement.clientWidth
+// keep track of the largest seen scrollbar to account for scrollbars appearing on the page
+let maxScrollbarWidth = 0
+
+const getWindowWidth = () => {
+  maxScrollbarWidth = Math.max(maxScrollbarWidth, window.innerWidth - document.documentElement.clientWidth)
+  return window.innerWidth - 20
+}
 
 export default (props: {game: GameState, chatMessages: any}) => {
   // TODO make sure that the use of clientWidth, which excludes the scrollbar, doesn't cause the view to oscillate
