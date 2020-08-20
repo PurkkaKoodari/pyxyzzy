@@ -1,11 +1,11 @@
 import React, {useEffect, useState, useContext, FormEvent, ChangeEvent} from "react"
 import Modal from "react-modal"
-import { toast } from "react-toastify"
+import {toast} from "react-toastify"
 import "./GameList.scss"
 import Loader from "./Loader"
-import { useMounted, unknownError } from "./utils"
-import { ConfigContext, UserContext, ConnectionContext } from "./contexts"
-import {GameListGame, GameListResponse} from "./api"
+import {useMounted, unknownError} from "../utils"
+import {ConfigContext, UserContext, ConnectionContext} from "./contexts"
+import {GameListGame, GameListResponse} from "../api"
 
 const CodeJoinForm = ({ joining, onJoin }: { joining: boolean, onJoin: (code: string) => void }) => {
   const config = useContext(ConfigContext)!

@@ -4,11 +4,11 @@ import "./App.scss"
 import ConnectingScreen from "./ConnectingScreen"
 import GameList from "./GameList"
 import GameScreen from "./GameScreen"
-import GameSocket from "./GameSocket"
+import GameSocket from "../GameSocket"
 import LoginScreen from "./LoginScreen"
 import {ConfigContext, ConnectionContext, EventContext, UserContext} from "./contexts"
-import {GameState, UserSession} from "./state"
-import {GameEventHandler} from "./events"
+import {GameState, UserSession} from "../state"
+import {GameEventHandler} from "../events"
 
 const SERVER_URL = `ws://${window.location.hostname}:8080/ws`
 

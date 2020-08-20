@@ -1,8 +1,8 @@
 import React, {useState, useContext, FormEvent} from "react"
 import "./LoginScreen.scss"
 import ExternalLink from "./ExternalLink"
-import { useMounted } from "./utils"
-import { ConfigContext, ConnectionContext } from "./contexts"
+import {useMounted} from "../utils"
+import {ConfigContext, ConnectionContext} from "./contexts"
 
 const LoginScreen = () => {
   const config = useContext(ConfigContext)!

@@ -1,12 +1,12 @@
 import React, {Component, useContext, useEffect, useState} from "react"
 import "./GameScreen.scss"
-import {range, unknownError} from "./utils"
+import {range, unknownError} from "../utils"
 import {ConfigContext, ConnectionContext, EventContext, UserContext} from "./contexts"
 import GameOptions from "./GameOptions"
 import {BlackCardView, WhiteCardGroup, WhiteCardPlaceholder, WhiteCardView} from "./cards"
-import {GameState, UserSession, WhiteCard} from "./state"
-import GameSocket from "./GameSocket"
-import {GameEventHandler} from "./events"
+import {GameState, UserSession, WhiteCard} from "../state"
+import GameSocket from "../GameSocket"
+import {GameEventHandler} from "../events"
 
 // minimum scale to render cards at. if this doesn't fit, well, you're screwed
 const MINIMUM_CARD_SCALE = 0.7

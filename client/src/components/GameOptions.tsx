@@ -1,8 +1,8 @@
 import React, {useContext, useState, useRef, useEffect, ChangeEvent, InputHTMLAttributes} from "react"
 import "./GameOptions.scss"
-import { unknownError, uniqueId } from "./utils"
-import { ConnectionContext, ConfigContext } from "./contexts"
-import {GameState} from "./state"
+import {unknownError, uniqueId} from "../utils"
+import {ConnectionContext, ConfigContext} from "./contexts"
+import {GameState} from "../state"
 
 interface OptionsInputFieldProps {
   type: string
