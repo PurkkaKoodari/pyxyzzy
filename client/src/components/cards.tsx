@@ -100,6 +100,8 @@ const computeCardTextSize = async <C extends AbstractCard>(CardComponent: Compon
     let upperBound = MAXIMUM_TEXT_SIZE
     for (let i = 0; i < 10; i++) {
       // render the component to compute text height
+      // the function is run before the await returns, so ignore the warning:
+      // eslint-disable-next-line no-loop-func
       await new Promise(resolve => {
         ReactDOM.render(<CardComponent card={card} givenTextSize={currentSize}/>, container, () => resolve())
       })
