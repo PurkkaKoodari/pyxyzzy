@@ -1,14 +1,16 @@
-import React, {useEffect, useState, useContext, FormEvent, ChangeEvent} from "react"
+import React, {ChangeEvent, FormEvent, useContext, useEffect, useState} from "react"
 import Modal from "react-modal"
 import {toast} from "react-toastify"
 import "./GameList.scss"
 import Loader from "./Loader"
-import {useMounted, unknownError} from "../utils"
-import {ConfigContext, UserContext, ConnectionContext} from "./contexts"
-import {GameListGame, GameListResponse} from "../api"
+import {handleAllErrorsAsUnknown, unknownError, useMounted} from "../utils"
+import {ConfigContext, AppStateContext, UserContext, ActingContext} from "./contexts"
+import {GameListGame} from "../api"
 
-const CodeJoinForm = ({ joining, onJoin }: { joining: boolean, onJoin: (code: string) => void }) => {
+const CodeJoinForm = ({ onJoin }: { onJoin: (code: string) => void }) => {
   const config = useContext(ConfigContext)!
+  const app = useContext(AppStateContext)!
+  const acting = useContext(ActingContext)
   const [code, setCode] = useState("")
 
   const codeValid = code.length === config.game.code.length
@@ -22,7 +24,7 @@ const CodeJoinForm = ({ joining, onJoin }: { joining: boolean, onJoin: (code: st
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (joining || !codeValid) return
+    if (acting || !codeValid) return
     onJoin(code)
   }
 
@@ -33,22 +35,24 @@ const CodeJoinForm = ({ joining, onJoin }: { joining: boolean, onJoin: (code: st
         className="game-code"
         maxLength={config.game.code.length}
         placeholder="Code"
-        disabled={joining}
+        disabled={acting}
         value={code}
         onChange={handleCodeChange} />
-      <button type="submit" disabled={joining || !codeValid}>Join by code</button>
+      <button type="submit" disabled={acting || !codeValid}>Join by code</button>
     </form>
   )
 }
 
-const GameCard = ({ game, joining, onJoin }: { game: GameListGame, joining: boolean, onJoin: (code: string) => void }) => {
+const GameCard = ({ game, onJoin }: { game: GameListGame, onJoin: (code: string) => void }) => {
+  const acting = useContext(ActingContext)
+
   return (
     <div className="game" key={game.code}>
       <h4 className="title">{game.title}</h4>
       <div className="code">{game.code}</div>
       <div className="players">Players: {game.players}/{game.player_limit}</div>
       <div className="password">{game.passworded ? "Requires password" : "Open"}</div>
-      <button type="button" className="join" disabled={joining} onClick={() => onJoin(game.code)}>Join</button>
+      <button type="button" className="join" disabled={acting} onClick={() => onJoin(game.code)}>Join</button>
     </div>
   )
 }
@@ -57,19 +61,18 @@ const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
   const [games, setGames] = useState<GameListGame[] | "error" | null>(null)
   const [filter, setFilter] = useState("")
   const [forcedUpdate, setForcedUpdate] = useState<any>(null)
-  const [joining, setJoining] = useState(false)
   const [joinModalCode, setJoinModalCode] = useState<string | null>(null)
   const [joinModalPassword, setJoinModalPassword] = useState("")
   const [joinModalIncorrect, setJoinModalIncorrect] = useState(false)
 
   const mounted = useMounted()
-  // this component is only rendered when these exist
-  const connection = useContext(ConnectionContext)!
+  const app = useContext(AppStateContext)!
   const user = useContext(UserContext)!
+  const acting = useContext(ActingContext)
 
   useEffect(() => {
     setGames(null)
-    connection.call<GameListResponse>("game_list")
+    app.gameList()
       .then(response => {
         if (!mounted.is) return
         setGames(response.games)
@@ -78,53 +81,45 @@ const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
         if (!mounted.is) return
         setGames("error")
       })
-  }, [forcedUpdate, connection])
+  }, [forcedUpdate, app])
 
-  const handleLogout = async () => {
-    try {
-      await connection.logout()
-    } catch (error) {
-      unknownError(error)
-    }
-  }
+  const handleLogout = handleAllErrorsAsUnknown(() => app.logout())
 
   const handleJoinGame = async (code: string, password: string = "") => {
-    setJoining(true)
     try {
-      await connection.call("join_game", { code, password }, true)
-      if (!mounted.is) return
+      await app.joinGame(code, password)
     } catch (error) {
       if (!mounted.is) return
-      if (error.code === "password_required" || error.code === "password_incorrect") {
-        setJoinModalCode(code)
-        setJoinModalPassword("")
-        setJoinModalIncorrect(error.code === "password_incorrect")
-      } else if (error.code === "game_not_found") {
-        toast.error("The game was not found.")
-        setJoinModalCode(null)
-      } else if (error.code === "game_full") {
-        toast.error("The game is full.")
-      } else if (error.code === "too_few_white_cards") {
-        toast.error("The game has too few white cards in play for you to join.")
-      } else {
-        unknownError(error)
+      switch (error.code) {
+        case "password_required":
+        case "password_incorrect":
+          setJoinModalCode(code)
+          setJoinModalPassword("")
+          setJoinModalIncorrect(error.code === "password_incorrect")
+          break
+        case "game_not_found":
+          toast.error("The game was not found.")
+          setJoinModalCode(null)
+          break
+        case "game_full":
+          toast.error("The game is full.")
+          break
+        case "too_few_white_cards":
+          toast.error("The game has too few white cards in play for you to join.")
+          break
+        default:
+          unknownError(error)
+          break
       }
     }
-    setJoining(false)
   }
 
-  const handleCreateGame = async () => {
-    try {
-      await connection.call("create_game", {}, true)
-    } catch (error) {
-      unknownError(error)
-    }
-  }
+  const handleCreateGame = handleAllErrorsAsUnknown(() => app.createGame())
 
-  const handleModalJoin = (e: FormEvent) => {
+  const handleModalJoin = async (e: FormEvent) => {
     e.preventDefault()
-    if (joining) return
-    handleJoinGame(joinModalCode!, joinModalPassword)
+    if (acting) return
+    await handleJoinGame(joinModalCode!, joinModalPassword)
   }
 
   let gameList
@@ -138,20 +133,23 @@ const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
     )
   } else {
     const trimmed = filter.trim().toUpperCase()
-    const filtered = trimmed === "" ? games : games.filter(game => game.title.toUpperCase().includes(trimmed) || game.code.includes(trimmed))
+    const filtered = trimmed === "" ? games :
+        games.filter(game => game.title.toUpperCase().includes(trimmed) || game.code.includes(trimmed))
     if (filtered.length === 0) {
       gameList = (
-        <div className="no-games">{trimmed === "" ? "There are currently no public games." : "No public games match your search."}</div>
+          <div className="no-games">
+            {trimmed === "" ? "There are currently no public games." : "No public games match your search."}
+          </div>
       )
     } else {
-      const gameCards = filtered.map(game => <GameCard key={game.code} game={game} joining={joining} onJoin={handleJoinGame} />)
+      const gameCards = filtered.map(game => <GameCard key={game.code} game={game} onJoin={handleJoinGame} />)
       for (let i = 0; i < 12; i++) {
         gameCards.push(<div className="game-spacer" key={`spacer ${i}`} />)
       }
       gameList = (
-        <div className="games">
-          {gameCards}
-        </div>
+          <div className="games">
+            {gameCards}
+          </div>
       )
     }
   }
@@ -163,7 +161,7 @@ const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
           <button type="button" onClick={handleCreateGame}>Create game</button>
         </div>
         <div className="join-private">
-          <CodeJoinForm joining={joining} onJoin={handleJoinGame} />
+          <CodeJoinForm onJoin={handleJoinGame} />
         </div>
         <div className="user-info">
           <div className="user-name">Logged in as <b>{user.name}</b></div>
@@ -179,24 +177,24 @@ const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Find&hellip;" />
-          <button type="button" className="refresh" onClick={() => setForcedUpdate(new Object())}>Refresh</button>
+          <button type="button" className="refresh" onClick={() => setForcedUpdate({})}>Refresh</button>
         </div>
       </div>
       {gameList}
       <Modal
         isOpen={joinModalCode !== null}
-        onRequestClose={() => !joining && setJoinModalCode(null)}
-        shouldCloseOnOverlayClick={!joining}>
+        onRequestClose={() => !acting && setJoinModalCode(null)}
+        shouldCloseOnOverlayClick={!acting}>
         <p className="help-text">The game requires a password to join.</p>
         <form onSubmit={handleModalJoin}>
           <input
             type="password"
             className="game-code"
             placeholder="Password"
-            disabled={joining}
+            disabled={acting}
             value={joinModalPassword}
             onChange={(e) => setJoinModalPassword(e.target.value)} />
-          <button type="submit" className="join" disabled={joining}>Join</button>
+          <button type="submit" className="join" disabled={acting}>Join</button>
         </form>
         {joinModalIncorrect ? (<div className="error">The password is incorrect.</div>) : null}
       </Modal>

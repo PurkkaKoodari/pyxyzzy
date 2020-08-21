@@ -1,6 +1,6 @@
 import log from "loglevel"
-import {uniqueId} from "./utils"
-import {GameState, UserSession} from "./state"
+import {sleep, uniqueId} from "./utils"
+import {AppState, UserSession} from "./state"
 import {AuthenticateResponse, UpdateRoot} from "./api"
 
 const UI_VERSION = "0.1-a1"
@@ -48,18 +48,14 @@ interface ApiCall<R> {
 
 export default class GameSocket {
   // the websocket url
-  url: string
+  url: string | null = null
+  // global app state
+  appState: AppState
 
   // called when the (client-facing) connection state changes
   onConnectionStateChange: (status: string, retryIn?: number) => void = () => {}
   // called when a config is received from the server
   onConfigChange: (config: any) => void = () => {}
-  // called when the user logs in or out
-  onSessionChange: (session: UserSession | null) => void = () => {}
-  // called when a game event occurs
-  onGameEvent: (event: any) => void = () => {}
-  // called when the game state changes
-  onGameStateChange: (state: GameState | null) => void = () => {}
 
   // WebSocket instance
   socket: WebSocket | null = null
@@ -89,14 +85,15 @@ export default class GameSocket {
   // stored game state JSON for delta updates
   gameStateJson: Partial<UpdateRoot> = {}
 
-  constructor(url: string) {
-    this.url = url
+  constructor(appState: AppState) {
+    this.appState = appState
   }
 
   disconnect() {
     this.closeRequested = true
     clearTimeout(this.reconnectTimeout)
-    if (this.socket !== null) this.socket.close()
+    if (this.socket !== null)
+      this.socket.close()
     this.handleDisconnection()
   }
 
@@ -115,7 +112,7 @@ export default class GameSocket {
   setSession(session: UserSession | null) {
     this.session = session
     saveSessionInStorage(session)
-    this.onSessionChange(session)
+    this.appState.updateSession(session)
     // reset game state when session closes
     if (session === null) {
       this.gameStateJson = {}
@@ -127,9 +124,14 @@ export default class GameSocket {
     this.setSession(null)
   }
 
-  connect() {
+  connect(url: string) {
+    this.url = url
+    this.openConnection()
+  }
+
+  openConnection() {
     log.debug("opening websocket")
-    const ws = new WebSocket(this.url)
+    const ws = new WebSocket(this.url!)
     this.socket = ws
     this.connectAttempts++
 
@@ -221,6 +223,10 @@ export default class GameSocket {
         return
       }
 
+      // ignore state updates when logged out
+      if (!this.session)
+        return
+
       // handle state updates
       log.debug("UPDATE", data)
 
@@ -245,23 +251,24 @@ export default class GameSocket {
         this.gameStateJson.options = data.options
         updated = true
       }
-      if (updated) this.dispatchUpdatedGameState()
+      if (updated)
+        this.dispatchUpdatedGameState()
 
       // handle game events
       if ("events" in data) {
         for (const event of data.events) {
           log.debug("EVENT", event)
-          this.onGameEvent(event)
+          this.appState!.handleEvent(event)
         }
       }
     })
   }
 
   dispatchUpdatedGameState() {
-    if (["game", "options", "hand", "players"].some(attr => !(attr in this.gameStateJson)) || this.gameStateJson.game === null) {
-      this.onGameStateChange(null)
+    if (!["game", "options", "hand", "players"].every(attr => attr in this.gameStateJson) || this.gameStateJson.game === null) {
+      this.appState.updateGameState(null)
     } else {
-      this.onGameStateChange(new GameState(this.session!, this.gameStateJson as UpdateRoot))
+      this.appState.updateGameState(this.gameStateJson as UpdateRoot)
     }
   }
 
@@ -297,7 +304,7 @@ export default class GameSocket {
   updateReconnectionTimer() {
     if (this.reconnectDelay <= 0) {
       this.onConnectionStateChange(this.connectAttempts > 0 ? "retry_reconnect" : "reconnect")
-      this.connect()
+      this.openConnection()
     } else {
       this.onConnectionStateChange(this.connectAttempts > 0 ? "retry_sleep" : "reconnect", this.reconnectDelay)
       this.reconnectTimeout = setTimeout(() => {
@@ -326,9 +333,9 @@ export default class GameSocket {
     setTimeout(() => window.location.reload(), 2000)
   }
 
-  call<R>(action: string, data: object = {}, persistent = false) {
+  async call<R>(action: string, data: object = {}, persistent = false) {
     const thisSocket = this
-    return new Promise<R>((resolve, reject) => {
+    return await new Promise<R>((resolve, reject) => {
       const call_id = uniqueId()
       const request = {
         action,

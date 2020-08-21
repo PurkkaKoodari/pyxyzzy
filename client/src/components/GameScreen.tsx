@@ -1,47 +1,109 @@
-import React, {Component, useContext, useEffect, useState} from "react"
+import React, {Component, useContext} from "react"
 import "./GameScreen.scss"
-import {range, unknownError} from "../utils"
-import {ConfigContext, ConnectionContext, EventContext, UserContext} from "./contexts"
+import {handleAllErrorsAsUnknown, range, unknownError, useWindowWidth} from "../utils"
+import {ActingContext, AppStateContext, ConfigContext, GameContext, UserContext} from "./contexts"
 import GameOptions from "./GameOptions"
 import {BlackCardView, WhiteCardGroup, WhiteCardPlaceholder, WhiteCardView} from "./cards"
-import {GameState, UserSession, WhiteCard} from "../state"
-import GameSocket from "../GameSocket"
-import {GameEventHandler} from "../events"
+import {GameState, WhiteCard} from "../state"
 
 // minimum scale to render cards at. if this doesn't fit, well, you're screwed
 const MINIMUM_CARD_SCALE = 0.7
 
 interface InstructionsViewProps {
-  game: GameState
   chosenWhites: (WhiteCard | null)[]
   selectedWhitePos: number | null
 }
 
-const InstructionsView = ({ game, chosenWhites, selectedWhitePos }: InstructionsViewProps) => {
+const GameControls = () => {
+  const app = useContext(AppStateContext)!
+  const user = useContext(UserContext)!
+  const game = useContext(GameContext)!
+  const acting = useContext(ActingContext)
+
+    const handleLeave = handleAllErrorsAsUnknown(() => app.leaveGame())
+
+    const handleLogout = handleAllErrorsAsUnknown(() => app.logout())
+
+    const handleStartStop = async () => {
+      try {
+        if (game.running)
+          await app.stopGame()
+        else
+          await app.startGame()
+      } catch (error) {
+        switch (error.code) {
+          case "too_few_players":
+            app.messageHandler.error("The game cannot start because there are too few players.")
+            break
+          case "too_few_black_cards":
+            app.messageHandler.error("The game cannot start because there are no black cards in the selected card " +
+                "packs.")
+            break
+          case "too_few_white_cards":
+            app.messageHandler.error("The game cannot start because there are too few white cards in the selected " +
+                "card packs for this many players.")
+            break
+          default:
+            unknownError(error)
+            break
+        }
+      }
+    }
+
+  let controls = null
+  if (game.isHost) {
+    controls = (
+        <button type="button" onClick={handleStartStop} disabled={acting}>
+          {game.running ? "Stop game" : "Start game"}
+        </button>
+    )
+  }
+
+  return (
+      <div className="nav">
+        <div className="game-controls">
+          {controls}
+        </div>
+        <div className="game-info">
+          <div className="game-code">Game <b>{game.code}</b></div>
+          <button type="button" onClick={handleLeave} disabled={acting}>Leave game</button>
+        </div>
+        <div className="user-info">
+          <div className="user-name">Logged in as <b>{user.name}</b></div>
+          <button type="button" onClick={handleLogout} disabled={acting}>Log out</button>
+        </div>
+      </div>
+  )
+}
+
+const InstructionsView = ({ chosenWhites, selectedWhitePos }: InstructionsViewProps) => {
+  const state = useContext(GameContext)!
+  const user = useContext(UserContext)!
+
   let action = null
-  if (game.shouldPlayWhiteCards) {
+  if (state.shouldPlayWhiteCards) {
     const toPlay = chosenWhites.filter(card => card === null).length
     if (toPlay) {
       action = <>Play {toPlay} {toPlay === chosenWhites.length ? "" : "more "}card{toPlay > 1 ? "s" : ""}.</>
     } else {
-      action = <>Confirm your selection{game.currentRound!.pickCount > 1 ? "s" : ""}. Click a card to unselect.</>
+      action = <>Confirm your selection{state.currentRound!.pickCount > 1 ? "s" : ""}. Click a card to unselect.</>
     }
-  } else if (game.state === "playing") {
+  } else if (state.state === "playing") {
     action = <>Waiting for the other players to play&hellip;</>
-  } else if (game.shouldJudge) {
+  } else if (state.shouldJudge) {
     if (selectedWhitePos === null) {
       action = <>Choose a winner.</>
     } else {
       action = <>Confirm your selection.</>
     }
-  } else if (game.state === "judging") {
-    action = <>Waiting for {game.cardCzar.name} to choose a winner&hellip;</>
-  } else if (game.state === "round_ended") {
-    if (game.roundWinner) {
-      const name = game.roundWinner.id === game.user.id ? "You" : game.roundWinner.name
-      action = <>{name} won the round. Next round starts in {game.options.round_end_time} seconds.</>
+  } else if (state.state === "judging") {
+    action = <>Waiting for {state.cardCzar.name} to choose a winner&hellip;</>
+  } else if (state.state === "round_ended") {
+    if (state.roundWinner) {
+      const name = state.roundWinner.id === user.id ? "You" : state.roundWinner.name
+      action = <>{name} won the round. Next round starts in {state.options.round_end_time} seconds.</>
     } else {
-      action = <>The round has been cancelled. Next round starts in {game.options.round_end_time} seconds.</>
+      action = <>The round has been cancelled. Next round starts in {state.options.round_end_time} seconds.</>
     }
   }
 
@@ -49,22 +111,43 @@ const InstructionsView = ({ game, chosenWhites, selectedWhitePos }: Instructions
 }
 
 interface TableViewProps {
-  game: GameState
   chosenWhites: (WhiteCard | null)[]
   selectedWhitePos: number | null
-  playing: boolean
   windowWidth: number
   unselectCard(pos: number): void
   selectPos(pos: number): void
-  confirmPlay(): void
-  confirmJudge(): void
 }
 
-const TableView = ({ game, chosenWhites, selectedWhitePos, playing, windowWidth, unselectCard, selectPos, confirmPlay, confirmJudge }: TableViewProps) => {
+const TableView = ({ chosenWhites, selectedWhitePos,  windowWidth, unselectCard, selectPos }: TableViewProps) => {
+  const app = useContext(AppStateContext)!
   const config = useContext(ConfigContext)!
+  const game = useContext(GameContext)!
+  const acting = useContext(ActingContext)
 
   if (!game.currentRound)
     return null
+
+  const confirmPlay = async () => {
+    // ensure valid selections
+    if (!game.shouldPlayWhiteCards || !chosenWhites!.every(card => card !== null))
+      return
+    try {
+      await app.playWhiteCards(chosenWhites as WhiteCard[])
+    } catch (error) {
+      unknownError(error)
+    }
+  }
+
+  const confirmJudge = async () => {
+    // ensure a valid state
+    if (!game.shouldJudge || selectedWhitePos === null || selectedWhitePos >= game.currentRound!.whiteCards!.length)
+      return
+    try {
+      await app.chooseWinner(game.currentRound!.whiteCards![selectedWhitePos][0])
+    } catch (error) {
+      unknownError(error)
+    }
+  }
 
   const table = game.currentRound.whiteCards
   const groupSize = game.currentRound.pickCount
@@ -106,7 +189,7 @@ const TableView = ({ game, chosenWhites, selectedWhitePos, playing, windowWidth,
       const won = game.state === "round_ended" && game.currentRound!.winningCardsId === group[0].id
       const selected = selectedWhitePos === pos
       const actions = selected ? (
-          <button type="button" disabled={playing} onClick={() => confirmJudge()}>Confirm selection</button>
+          <button type="button" disabled={acting} onClick={() => confirmJudge()}>Confirm selection</button>
       ) : null
       return (
         <WhiteCardGroup
@@ -115,7 +198,7 @@ const TableView = ({ game, chosenWhites, selectedWhitePos, playing, windowWidth,
             active={won || selected}
             actions={actions}
             scale={scale}
-            onClick={() => game.shouldJudge && !playing && selectPos(pos)} />
+            onClick={() => game.shouldJudge && !acting && selectPos(pos)} />
       )
     })
   } else if (game.state === "playing" && (game.shouldPlayWhiteCards || table !== null)) {
@@ -127,7 +210,7 @@ const TableView = ({ game, chosenWhites, selectedWhitePos, playing, windowWidth,
               key={cards[pos]!.id}
               card={cards[pos]!}
               scale={scale}
-              onClick={() => game.shouldPlayWhiteCards && !playing && unselectCard(pos)} />
+              onClick={() => game.shouldPlayWhiteCards && !acting && unselectCard(pos)} />
         )
       } else {
         return (
@@ -142,7 +225,7 @@ const TableView = ({ game, chosenWhites, selectedWhitePos, playing, windowWidth,
     })
     const allSelected = chosenWhites.every(card => card !== null)
     const actions = game.shouldPlayWhiteCards ? (
-        <button type="button" onClick={() => confirmPlay()} disabled={playing || !allSelected}>
+        <button type="button" onClick={() => confirmPlay()} disabled={acting || !allSelected}>
           {groupSize > 1 ? "Confirm selections" : "Confirm selection"}
         </button>
     ) : null
@@ -158,14 +241,15 @@ const TableView = ({ game, chosenWhites, selectedWhitePos, playing, windowWidth,
 }
 
 interface HandViewProps {
-  game: GameState
   chosenWhites: (WhiteCard | null)[]
-  playing: boolean
   windowWidth: number
   selectCard: (card: WhiteCard) => void
 }
 
-const HandView = ({ game, chosenWhites, playing, windowWidth, selectCard }: HandViewProps) => {
+const HandView = ({ chosenWhites, windowWidth, selectCard }: HandViewProps) => {
+  const game = useContext(GameContext)!
+  const acting = useContext(ActingContext)
+
   if (!game.running)
     return null
 
@@ -188,7 +272,7 @@ const HandView = ({ game, chosenWhites, playing, windowWidth, selectCard }: Hand
                 card={card}
                 disabled={!game.shouldPlayWhiteCards || chosenWhites.some(chosen => chosen && chosen.id === card.id)}
                 scale={scale}
-                onClick={() => !playing && selectCard(card)}/>
+                onClick={() => !acting && selectCard(card)}/>
           )}
         </div>
       </div>
@@ -196,9 +280,6 @@ const HandView = ({ game, chosenWhites, playing, windowWidth, selectCard }: Hand
 }
 
 type GameScreenProps = {
-  connection: GameSocket
-  eventHandler: GameEventHandler
-  user: UserSession
   game: GameState
   windowWidth: number
 }
@@ -208,7 +289,6 @@ type GameScreenState = {
   currentGameState: string | null
   chosenWhites: (WhiteCard | null)[] | null
   selectedWhitePos: number | null
-  playing: boolean
 }
 
 class GameScreen extends Component<GameScreenProps, GameScreenState> {
@@ -217,70 +297,32 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
     currentGameState: null,
     chosenWhites: null,
     selectedWhitePos: null,
-    playing: false,
   }
 
   static getDerivedStateFromProps(props: GameScreenProps, state: GameScreenState) {
+    const {game} = props
     let newState = {}
     // clear chosen white cards if not playing any
-    if (props.game.roundId !== state.currentRoundId || !props.game.shouldPlayWhiteCards) {
+    if (game.roundId !== state.currentRoundId || !game.shouldPlayWhiteCards) {
       newState = {
         ...newState,
-        chosenWhites: props.game.currentRound && Array(props.game.currentRound.pickCount).fill(null),
-        currentRoundId: props.game.roundId,
+        chosenWhites: game.currentRound && Array(game.currentRound.pickCount).fill(null),
+        currentRoundId: game.roundId,
       }
     }
-    if (props.game.state !== state.currentGameState) {
+    // reset chosen white card as this slot is used for different purposes in different states
+    if (game.state !== state.currentGameState) {
       newState = {
         ...newState,
-        selectedWhitePos: props.game.state === "playing" ? 0 : null,
-        currentGameState: props.game.state,
+        selectedWhitePos: game.state === "playing" ? 0 : null,
+        currentGameState: game.state,
       }
     }
     return newState
   }
 
   render() {
-    const {game, connection, user} = this.props
-
-    const handleLeave = async () => {
-      try {
-        await connection.call("leave_game")
-      } catch (error) {
-        unknownError(error)
-      }
-    }
-
-    const handleLogout = async () => {
-      try {
-        await connection.logout()
-      } catch (error) {
-        unknownError(error)
-      }
-    }
-
-    const handleStartStop = async () => {
-      try {
-        await connection.call(game.running ? "stop_game" : "start_game")
-      } catch (error) {
-        switch (error.code) {
-          case "too_few_players":
-            this.props.eventHandler.error("The game cannot start because there are too few players.")
-            break
-          case "too_few_black_cards":
-            this.props.eventHandler.error("The game cannot start because there are no black cards in the selected " +
-                "card packs.")
-            break
-          case "too_few_white_cards":
-            this.props.eventHandler.error("The game cannot start because there are too few white cards in the " +
-                "selected card packs for this many players.")
-            break
-          default:
-            unknownError(error)
-            break
-        }
-      }
-    }
+    const {game} = this.props
 
     const unselectCard = (posToClear: number) => {
       // unselect the card at the position
@@ -313,89 +355,21 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
       })
     }
 
-    const confirmPlay = async () => {
-      // ensure valid selections
-      if (!game.shouldPlayWhiteCards || !this.state.chosenWhites!.every(card => card !== null))
-        return
-      // disable UI before call
-      this.setState({ playing: true })
-      try {
-        // TODO: support for blanks
-        await connection.call("play_white", {
-          round: game.roundId,
-          cards: this.state.chosenWhites!.map(card => ({
-            id: card!.id,
-          })),
-        })
-      } catch (error) {
-        unknownError(error)
-      } finally {
-        // re-enable UI
-        this.setState({ playing: false })
-      }
-    }
-
-    const confirmJudge = async () => {
-      // ensure a valid state
-      if (!game.shouldJudge || this.state.selectedWhitePos === null || this.state.selectedWhitePos >= game.currentRound!.whiteCards!.length)
-        return
-      // disable UI before call
-      this.setState({ playing: true })
-      try {
-        await connection.call("choose_winner", {
-          round: game.roundId,
-          winner: game.currentRound!.whiteCards![this.state.selectedWhitePos][0].id,
-        })
-      } catch (error) {
-        unknownError(error)
-      } finally {
-        // re-enable UI
-        this.setState({ playing: false })
-      }
-    }
-
-    let controls = null
-    if (user.id === game.host.id) {
-      controls =
-          <button type="button" onClick={handleStartStop}>
-            {game.running ? "Stop game" : "Start game"}
-          </button>
-    }
-
     return (
         <div className={`in-game game-state-${game.state} ${game.shouldJudge ? "should-judge" : ""} ${game.shouldPlayWhiteCards ? "should-play" : ""}`}>
-          <div className="nav">
-            <div className="game-controls">
-              {controls}
-            </div>
-            <div className="game-info">
-              <div className="game-code">Game <b>{game.code}</b></div>
-              <button type="button" onClick={handleLeave}>Leave game</button>
-            </div>
-            <div className="user-info">
-              <div className="user-name">Logged in as <b>{user.name}</b></div>
-              <button type="button" onClick={handleLogout}>Log out</button>
-            </div>
-          </div>
-          <GameOptions game={game}/>
+          <GameControls />
+          <GameOptions />
           <InstructionsView
-              game={game}
               chosenWhites={this.state.chosenWhites!}
               selectedWhitePos={this.state.selectedWhitePos} />
           <TableView
-              game={game}
               chosenWhites={this.state.chosenWhites!}
               selectedWhitePos={this.state.selectedWhitePos}
-              playing={this.state.playing}
               windowWidth={this.props.windowWidth}
               unselectCard={unselectCard}
-              selectPos={pos => this.setState({selectedWhitePos: pos})}
-              confirmPlay={confirmPlay}
-              confirmJudge={confirmJudge} />
+              selectPos={pos => this.setState({selectedWhitePos: pos})} />
           <HandView
-              game={game}
               chosenWhites={this.state.chosenWhites!}
-              playing={this.state.playing}
               windowWidth={this.props.windowWidth}
               selectCard={selectCard} />
         </div>
@@ -403,47 +377,17 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
   }
 }
 
-// keep track of the largest seen scrollbar to account for scrollbars appearing on the page
-let maxScrollbarWidth = 0
-
-const getWindowWidth = () => {
-  maxScrollbarWidth = Math.max(maxScrollbarWidth, window.innerWidth - document.documentElement.clientWidth)
-  return window.innerWidth - 20
-}
-
-export default (props: {game: GameState, chatMessages: any}) => {
-  // TODO make sure that the use of clientWidth, which excludes the scrollbar, doesn't cause the view to oscillate
-  //  or overflow into the vertical scrollbar
-  const [windowWidth, setWindowWidth] = useState(getWindowWidth())
-
-  useEffect(() => {
-    const listener = () => {
-      setWindowWidth(getWindowWidth())
-    }
-    window.addEventListener("resize", listener)
-    return () => {
-      window.removeEventListener("resize", listener)
-    }
-  }, [])
+export default (props: {chatMessages: any}) => {
+  const windowWidth = useWindowWidth()
 
   return (
-    <UserContext.Consumer>
-      {user => (
-        <ConnectionContext.Consumer>
-          {connection => (
-            <EventContext.Consumer>
-              {eventHandler => (
-                <GameScreen
-                    user={user!}
-                    connection={connection!}
-                    eventHandler={eventHandler!}
-                    windowWidth={windowWidth}
-                    {...props} />
-              )}
-            </EventContext.Consumer>
-          )}
-        </ConnectionContext.Consumer>
-      )}
-    </UserContext.Consumer>
+      <GameContext.Consumer>
+        {game => (
+            <GameScreen
+                game={game!}
+                windowWidth={windowWidth}
+                {...props} />
+        )}
+      </GameContext.Consumer>
   )
 }

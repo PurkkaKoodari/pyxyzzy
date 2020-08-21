@@ -1,8 +1,7 @@
-import React, {useContext, useState, useRef, useEffect, ChangeEvent, InputHTMLAttributes} from "react"
+import React, {ChangeEvent, InputHTMLAttributes, useContext, useEffect, useRef, useState} from "react"
 import "./GameOptions.scss"
-import {unknownError, uniqueId} from "../utils"
-import {ConnectionContext, ConfigContext} from "./contexts"
-import {GameState} from "../state"
+import {uniqueId, unknownError} from "../utils"
+import {AppStateContext, ConfigContext, GameContext} from "./contexts"
 
 interface OptionsInputFieldProps {
   type: string
@@ -44,15 +43,15 @@ type OptionTypeName = "text" | "number" | "checkbox" | "card_packs"
 type OptionValue = string | number | boolean | string[]
 
 interface OptionsInputProps {
-  game: GameState
   name: string
   type: OptionTypeName
   [attr: string]: any
 }
 
-const OptionsInput = ({ game, name, type, ...attrs }: OptionsInputProps) => {
+const OptionsInput = ({ name, type, ...attrs }: OptionsInputProps) => {
   const config = useContext(ConfigContext)!
-  const connection = useContext(ConnectionContext)!
+  const app = useContext(AppStateContext)!
+  const game = useContext(GameContext)!
 
   const [unsaved, setUnsaved] = useState<OptionValue | null>(null)
   // use a ref because saved made by future renders need to
@@ -78,9 +77,7 @@ const OptionsInput = ({ game, name, type, ...attrs }: OptionsInputProps) => {
     }
     // save the change
     try {
-      await connection!.call("game_options", {
-        [name]: value
-      })
+      await app.setGameOptions({[name]: value})
     } catch (e) {
       unknownError(e)
     }
@@ -95,10 +92,10 @@ const OptionsInput = ({ game, name, type, ...attrs }: OptionsInputProps) => {
   if (type === "card_packs") {
     const packs = fieldValue as string[]
 
-    const handlePackChange = (packId: string) => (forceSave: boolean) => (e: ChangeEvent<HTMLInputElement>) => {
+    const handlePackChange = (packId: string) => (forceSave: boolean) => async (e: ChangeEvent<HTMLInputElement>) => {
       // add or remove the pack
       const newPacks = e.target.checked ? packs.concat(packId) : packs.filter(id => id !== packId)
-      doUpdate(forceSave, newPacks)
+      await doUpdate(forceSave, newPacks)
     }
   
     return (
@@ -117,7 +114,7 @@ const OptionsInput = ({ game, name, type, ...attrs }: OptionsInputProps) => {
     )
   }
 
-  const handleFieldChange = (forceSave: boolean) => (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFieldChange = (forceSave: boolean) => async (e: ChangeEvent<HTMLInputElement>) => {
     // compute correct type of value
     let value: string | number | boolean = type === "checkbox" ? e.target.checked : e.target.value
     if (type === "number" && (value as string).trim() !== "") value = +value
@@ -125,7 +122,7 @@ const OptionsInput = ({ game, name, type, ...attrs }: OptionsInputProps) => {
     const valid = e.target.reportValidity()
     // force saving when using number input ticker
     const isNumberTick = type === "number" && (e.nativeEvent as InputEvent).inputType === "insertReplacementText"
-    doUpdate(forceSave || isNumberTick, value, valid)
+    await doUpdate(forceSave || isNumberTick, value, valid)
   }
 
   return (
@@ -138,8 +135,10 @@ const OptionsInput = ({ game, name, type, ...attrs }: OptionsInputProps) => {
   )
 }
 
-const GameOptions = ({ game }: { game: GameState }) => {
+const GameOptions = () => {
   const config = useContext(ConfigContext)!
+  const app = useContext(AppStateContext)!
+  const game = useContext(GameContext)!
 
   const [open, setOpen] = useState(false)
 
@@ -148,7 +147,7 @@ const GameOptions = ({ game }: { game: GameState }) => {
 
   const openClass = !game.running ? "force open" : open ? "open" : ""
   
-  const defaultTitle = config.game.title.default.replace(/\{USER\}/g, game.players[0].name)
+  const defaultTitle = config.game.title.default.replace(/\{USER\}/g, game.host.name)
 
   return (
     <div className={`options-container ${openClass}`}>
@@ -160,27 +159,27 @@ const GameOptions = ({ game }: { game: GameState }) => {
           <h4>Joining</h4>
           <div>
             <OptionsInput
-                game={game}
+                state={app}
                 type="text"
                 name="game_title"
                 placeholder={defaultTitle}
                 label="Game title"
                 title="The title of the game, displayed in the public games list." />
             <OptionsInput
-                game={game}
+                state={app}
                 type="checkbox"
                 name="public"
                 label="Public"
                 title="If checked, the game will show up in the public games list." />
             <OptionsInput
-                game={game}
+                state={app}
                 type="text"
                 name="password"
                 placeholder="(no password)"
                 label="Password"
                 title="The password required to join the game." />
             <OptionsInput
-                game={game}
+                state={app}
                 type="number"
                 name="player_limit"
                 min={config.game.player_limit.min}
@@ -194,7 +193,7 @@ const GameOptions = ({ game }: { game: GameState }) => {
           <h4>Idle timers</h4>
           <div>
             <OptionsInput
-                game={game}
+                state={app}
                 type="number"
                 name="think_time"
                 min={config.game.think_time.min}
@@ -203,7 +202,7 @@ const GameOptions = ({ game }: { game: GameState }) => {
                 label="Think time"
                 title="The number of seconds before a player is skipped for being idle." />
             <OptionsInput
-                game={game}
+                state={app}
                 type="number"
                 name="round_end_time"
                 min={config.game.round_end_time.min}
@@ -212,7 +211,7 @@ const GameOptions = ({ game }: { game: GameState }) => {
                 label="Round end time"
                 title="The number of seconds the round's winner is shown for before starting a new round." />
             <OptionsInput
-                game={game}
+                state={app}
                 type="number"
                 name="idle_rounds"
                 min={config.game.idle_rounds.min}
@@ -226,7 +225,6 @@ const GameOptions = ({ game }: { game: GameState }) => {
           <h4>Rules</h4>
           <div>
             <OptionsInput
-                game={game}
                 type="number"
                 name="blank_cards"
                 min={config.game.blank_cards.count.min}
@@ -235,7 +233,6 @@ const GameOptions = ({ game }: { game: GameState }) => {
                 label="Blank cards"
                 title="The number of blank white cards included in the deck." />
             <OptionsInput
-                game={game}
                 type="number"
                 name="point_limit"
                 min={config.game.point_limit.min}
@@ -249,7 +246,7 @@ const GameOptions = ({ game }: { game: GameState }) => {
           <h4>Cards</h4>
           <div>
             <OptionsInput
-                game={game}
+                state={app}
                 type="card_packs"
                 name="card_packs" />
           </div>

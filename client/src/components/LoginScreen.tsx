@@ -1,12 +1,12 @@
-import React, {useState, useContext, FormEvent} from "react"
+import React, {FormEvent, useContext, useState} from "react"
 import "./LoginScreen.scss"
 import ExternalLink from "./ExternalLink"
 import {useMounted} from "../utils"
-import {ConfigContext, ConnectionContext} from "./contexts"
+import {AppStateContext, ConfigContext} from "./contexts"
 
 const LoginScreen = () => {
   const config = useContext(ConfigContext)!
-  const connection = useContext(ConnectionContext)!
+  const app = useContext(AppStateContext)!
 
   const [loggingIn, setLoggingIn] = useState(false)
   const [name, setName] = useState("")
@@ -36,7 +36,7 @@ const LoginScreen = () => {
     if (!canSubmit) return
     setLoggingIn(true)
     try {
-      await connection.login(name)
+      await app.login(name)
       if (!mounted.is) return
       setLoginError(null)
     } catch (error) {

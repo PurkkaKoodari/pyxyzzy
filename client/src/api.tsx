@@ -1,3 +1,5 @@
+import {GameStateEnum} from "./state"
+
 export interface ConfigIntLimits {
   min: number
   max: number
@@ -144,7 +146,7 @@ export interface UpdateBlackCard {
 
 export interface UpdateRoot {
   game: {
-    state: string
+    state: GameStateEnum
     code: string
     current_round: UpdateRound | null
   }
