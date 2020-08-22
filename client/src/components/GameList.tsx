@@ -9,7 +9,6 @@ import {GameListGame} from "../api"
 
 const CodeJoinForm = ({ onJoin }: { onJoin: (code: string) => void }) => {
   const config = useContext(ConfigContext)!
-  const app = useContext(AppStateContext)!
   const acting = useContext(ActingContext)
   const [code, setCode] = useState("")
 

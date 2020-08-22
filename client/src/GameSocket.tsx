@@ -1,5 +1,5 @@
 import log from "loglevel"
-import {sleep, uniqueId} from "./utils"
+import {uniqueId} from "./utils"
 import {AppState, UserSession} from "./state"
 import {AuthenticateResponse, UpdateRoot} from "./api"
 
