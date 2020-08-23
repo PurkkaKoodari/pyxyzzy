@@ -69,9 +69,11 @@ button {
     color: #000000;
     border: 2px outset #dddddd;
 }
-button:disabled {
-    color: #999999;
-}
 button:active {
     border-style: inset;
+}
+button:disabled {
+    color: #999999;
+    border-style: outset;
+    cursor: not-allowed;
 }
