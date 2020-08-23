@@ -42,7 +42,7 @@ const CodeJoinForm = ({ onJoin }: { onJoin: (code: string) => void }) => {
   )
 }
 
-const GameCard = ({ game, onJoin }: { game: GameListGame, onJoin: (code: string) => void }) => {
+const GameListCard = ({ game, onJoin }: { game: GameListGame, onJoin: (code: string) => void }) => {
   const acting = useContext(ActingContext)
 
   return (
@@ -57,7 +57,7 @@ const GameCard = ({ game, onJoin }: { game: GameListGame, onJoin: (code: string)
 }
 
 const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
-  const [games, setGames] = useState<GameListGame[] | "error" | null>(null)
+  const [games, setGames] = useState<readonly GameListGame[] | "error" | null>(null)
   const [filter, setFilter] = useState("")
   const [forcedUpdate, setForcedUpdate] = useState<any>(null)
   const [joinModalCode, setJoinModalCode] = useState<string | null>(null)
@@ -141,7 +141,7 @@ const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
           </div>
       )
     } else {
-      const gameCards = filtered.map(game => <GameCard key={game.code} game={game} onJoin={handleJoinGame} />)
+      const gameCards = filtered.map(game => <GameListCard key={game.code} game={game} onJoin={handleJoinGame} />)
       for (let i = 0; i < 12; i++) {
         gameCards.push(<div className="game-spacer" key={`spacer ${i}`} />)
       }

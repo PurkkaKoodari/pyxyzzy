@@ -1,5 +1,6 @@
 import {
-  AuthenticateResponse, GameListResponse,
+  AuthenticateResponse,
+  GameListResponse,
   UpdateBlackCard,
   UpdateOptions,
   UpdatePlayer,
@@ -12,12 +13,18 @@ import log from "loglevel"
 import MessageHandler from "./MessageHandler"
 import GameSocket from "./GameSocket"
 
+/**
+ * Common properties for white and black cards for card rendering.
+ */
 export interface AbstractCard {
   readonly text: string
   readonly packName: string | null
   readonly fontSizeCacheKey: string
 }
 
+/**
+ * Represents a black card. Immutable.
+ */
 export class BlackCard implements AbstractCard {
   readonly text: string
   readonly packName: string | null
@@ -34,6 +41,9 @@ export class BlackCard implements AbstractCard {
   }
 }
 
+/**
+ * Represents a white card in the hand or on the table. Immutable.
+ */
 export class WhiteCard {
   readonly id: string
   readonly text: string
@@ -50,11 +60,14 @@ export class WhiteCard {
   }
 }
 
+/**
+ * Represents a round in the game. Currently only used for the current round. Immutable.
+ */
 export class Round {
   readonly id: string
   readonly cardCzarId: string
-  readonly blackCard: Readonly<BlackCard>
-  readonly whiteCards: Readonly<WhiteCard[][]> | null
+  readonly blackCard: BlackCard
+  readonly whiteCards: readonly WhiteCard[][] | null
   readonly winningPlayerId: string | null
   readonly winningCardsId: string | null
 
@@ -72,6 +85,9 @@ export class Round {
   }
 }
 
+/**
+ * Represents a player's participation in a game. Immutable.
+ */
 export class Player {
   readonly id: string
   readonly name: string
@@ -86,6 +102,9 @@ export class Player {
   }
 }
 
+/**
+ * Represents the local user's session. Immutable.
+ */
 export class UserSession {
   readonly id: string
   readonly name: string
@@ -100,21 +119,25 @@ export class UserSession {
 
 export type GameStateEnum = "not_started" | "playing" | "judging" | "round_ended" | "game_ended"
 
+/**
+ * Represents the entire state of a single game. Immutable.
+ */
 export class GameState {
+  // reference the AppState for getting user info
   private readonly appState: AppState
 
   readonly state: GameStateEnum
   readonly code: string
-  readonly currentRound: Readonly<Round> | null
-  readonly players: Readonly<Player[]>
-  readonly options: Readonly<UpdateOptions>
-  readonly hand: Readonly<WhiteCard[]>
+  readonly currentRoundNullable: Round | null
+  readonly players: readonly Player[]
+  readonly options: UpdateOptions
+  readonly hand: WhiteCard[]
 
   constructor(app: AppState, stateJson: UpdateRoot) {
     this.appState = app
     this.state = stateJson.game.state
     this.code = stateJson.game.code
-    this.currentRound = stateJson.game.current_round && new Round(stateJson.game.current_round)
+    this.currentRoundNullable = stateJson.game.current_round && new Round(stateJson.game.current_round)
     this.players = stateJson.players.map(player => new Player(player))
     this.options = stateJson.options
     this.hand = stateJson.hand.map(card => new WhiteCard(card))
@@ -124,10 +147,10 @@ export class GameState {
     return this.state !== "not_started" && this.state !== "game_ended"
   }
 
-  get currentRoundChecked(): Readonly<Round> {
-    if (!this.currentRound)
+  get currentRound(): Readonly<Round> {
+    if (!this.currentRoundNullable)
       throw new Error("game is not running")
-    return this.currentRound
+    return this.currentRoundNullable
   }
 
   get host(): Player {
@@ -135,19 +158,19 @@ export class GameState {
   }
 
   get isHost(): boolean {
-    return this.appState.loggedInUser.id === this.host.id
+    return this.appState.user.id === this.host.id
   }
 
   get cardCzar(): Player {
-    return this.playerById(this.currentRoundChecked.cardCzarId)
+    return this.playerById(this.currentRound.cardCzarId)
   }
 
   get isCardCzar(): boolean {
-    return this.appState.loggedInUser.id === this.cardCzar.id
+    return this.appState.user.id === this.cardCzar.id
   }
 
   get roundWinner(): Player | null {
-    return this.currentRoundChecked.winningPlayerId ? this.playerById(this.currentRoundChecked.winningPlayerId) : null
+    return this.currentRound.winningPlayerId ? this.playerById(this.currentRound.winningPlayerId) : null
   }
 
   playerById(id: string): Player {
@@ -158,12 +181,9 @@ export class GameState {
     return player
   }
 
-  get roundId(): string | null {
-    return this.currentRound && this.currentRound.id
-  }
-
   get shouldPlayWhiteCards() {
-    return this.state === "playing" && !this.isCardCzar && this.currentRound!.whiteCards === null && this.hand.length > 0
+    return this.state === "playing" && !this.isCardCzar && this.currentRound.whiteCards === null
+        && this.hand.length > 0
   }
 
   get shouldJudge() {
@@ -171,11 +191,14 @@ export class GameState {
   }
 }
 
+/**
+ * Holds the entire state of the app for imperative code. Mutable, single instance per app.
+ */
 export class AppState {
   readonly connection: GameSocket
   readonly messageHandler: MessageHandler
-  private user: UserSession | null = null
-  private game: GameState | null = null
+  private userNullable: UserSession | null = null
+  private gameNullable: GameState | null = null
   private isActing: boolean = false
 
   onUserUpdated: (user: UserSession | null) => void = () => {}
@@ -187,10 +210,16 @@ export class AppState {
     this.messageHandler = new MessageHandler()
   }
 
-  get loggedInUser(): UserSession {
-    if (!this.user)
+  get user(): UserSession {
+    if (!this.userNullable)
       throw new Error("not logged in")
-    return this.user
+    return this.userNullable
+  }
+
+  get game(): GameState {
+    if (!this.gameNullable)
+      throw new Error("no game ongoing")
+    return this.gameNullable
   }
 
   private get acting() {
@@ -202,7 +231,14 @@ export class AppState {
     this.onActingChanged(acting)
   }
 
-  async act<R>(action: (() => Promise<R>) | string, params?: any, persistent?: boolean): Promise<R> {
+  /**
+   * Utility method for performing calls and setting `acting` while they are running. No two calls may overlap.
+   * @param action an API action name or an async function to call
+   * @param params for string actions, the call parameters
+   * @param persistent for string actions, whether or not the call is persistent
+   * @private
+   */
+  private async act<R>(action: (() => Promise<R>) | string, params?: any, persistent?: boolean): Promise<R> {
     if (this.acting) {
       log.warn("Canceling", action, "because another action is already ongoing")
       throw new Error("another action is already ongoing")
@@ -255,10 +291,8 @@ export class AppState {
   }
 
   async playWhiteCards(cards: WhiteCard[]) {
-    if (!this.game)
-      throw new Error("not in game")
     await this.act("play_white", {
-      round: this.game.roundId,
+      round: this.game.currentRound.id,
       cards: cards.map(card => {
         if (card.isBlank) {
           return {
@@ -274,24 +308,22 @@ export class AppState {
   }
 
   async chooseWinner(winningCard: WhiteCard) {
-    if (!this.game)
-      throw new Error("not in game")
     await this.act("choose_winner", {
-      round: this.game.roundId,
+      round: this.game.currentRound.id,
       winner: winningCard.id,
     }, true)
   }
 
   updateSession(session: UserSession | null) {
-    this.user = session
+    this.userNullable = session
     if (!session)
       this.acting = false
-    this.onUserUpdated(this.user)
+    this.onUserUpdated(this.userNullable)
   }
 
   updateGameState(update: UpdateRoot | null) {
-    this.game = update && new GameState(this, update)
-    this.onGameStateUpdated(this.game)
+    this.gameNullable = update && new GameState(this, update)
+    this.onGameStateUpdated(this.gameNullable)
   }
 
   handleEvent(event: any) {
@@ -313,7 +345,7 @@ export class AppState {
         this.messageHandler.info(`${event.player.name} joined the game.`)
         break
       case "player_leave":
-        const you = event.player.id === this.loggedInUser.id
+        const you = event.player.id === this.user.id
         switch (event.reason) {
           case "disconnect":
             if (!you)

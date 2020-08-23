@@ -1,8 +1,12 @@
 import log from "loglevel"
 import {uniqueId} from "./utils"
 import {AppState, UserSession} from "./state"
-import {AuthenticateResponse, UpdateRoot} from "./api"
+import {AuthenticateResponse, UpdateGame, UpdateOptions, UpdatePlayer, UpdateRoot, UpdateWhiteCard} from "./api"
 
+/**
+ * The UI version is sent to the server in the handshake and compared to see if we are using an outdated frontend from
+ * the browser cache.
+ */
 const UI_VERSION = "0.1-a1"
 
 const INITIAL_RECONNECT_INTERVAL = .5
@@ -46,11 +50,22 @@ interface ApiCall<R> {
   fail(code: string, description: string): void
 }
 
+interface WritableUpdateRoot extends UpdateRoot {
+  game: UpdateGame
+  players: readonly UpdatePlayer[]
+  hand: readonly UpdateWhiteCard[]
+  options: UpdateOptions
+  [key: string]: UpdateGame | readonly UpdatePlayer[] | readonly UpdateWhiteCard[] | UpdateOptions
+}
+
+/**
+ * Manages the WebSocket connection for the game, handles authentication, API calls and tracks state updates.
+ */
 export default class GameSocket {
   // the websocket url
-  url: string | null = null
+  private url: string | null = null
   // global app state
-  appState: AppState
+  private readonly appState: AppState
 
   // called when the (client-facing) connection state changes
   onConnectionStateChange: (status: string, retryIn?: number) => void = () => {}
@@ -58,37 +73,51 @@ export default class GameSocket {
   onConfigChange: (config: any) => void = () => {}
 
   // WebSocket instance
-  socket: WebSocket | null = null
+  private socket: WebSocket | null = null
 
   // true when websocket connected
-  connected = false
+  private connected = false
   // true when connected & can authenticate
-  handshaked = false
+  private handshaked = false
   // true when connected & user logged in
-  authenticated = false
+  private authenticated = false
   // true when disconnect() has been called
-  closeRequested = false
+  private closeRequested = false
 
   // seconds to sleep before attempting to reconnect
-  reconnectDelay = 0
+  private reconnectDelay = 0
   // setTimeout id for sleeping before reconnection
-  reconnectTimeout: any
+  private reconnectTimeout: any
   // number of started connection attempts since last successful connection
-  connectAttempts = 0
+  private connectAttempts = 0
 
   // promises for ongoing API calls
-  ongoingCalls: { [key: number]: ApiCall<any> } = {}
+  private readonly ongoingCalls: {[key: number]: ApiCall<any>} = {}
 
   // stored session for relogin
-  session = getSessionFromStorage()
+  private session = getSessionFromStorage()
 
   // stored game state JSON for delta updates
-  gameStateJson: Partial<UpdateRoot> = {}
+  private gameStateJson: Partial<WritableUpdateRoot> = {}
 
   constructor(appState: AppState) {
     this.appState = appState
   }
 
+  /**
+   * Sets the WebSocket connection URL and opens the connection. May only be called once.
+   * @param url the WebSocket URL
+   */
+  connect(url: string) {
+    if (this.url !== null)
+      throw new Error("GameSocket.connect() may only be called once")
+    this.url = url
+    this.doConnect()
+  }
+
+  /**
+   * Closes this connection permanently.
+   */
   disconnect() {
     this.closeRequested = true
     clearTimeout(this.reconnectTimeout)
@@ -97,10 +126,17 @@ export default class GameSocket {
     this.handleDisconnection()
   }
 
+  /**
+   * Logs in with a new session using the given username. Relogins are automatically handled by GameSocket.
+   * @param name the username to use
+   */
   async login(name: string) {
     await this.doAuthenticate({ name })
   }
 
+  /**
+   * Logs out of the current session, keeping the connection open.
+   */
   async logout() {
     // delete the session from storage before contacting the server to ensure at least a client-side logout
     saveSessionInStorage(null)
@@ -109,27 +145,28 @@ export default class GameSocket {
     this.removeSession()
   }
 
-  setSession(session: UserSession | null) {
+  private setSession(session: UserSession | null) {
     this.session = session
     saveSessionInStorage(session)
     this.appState.updateSession(session)
-    // reset game state when session closes
+
     if (session === null) {
+      // if the session no longer exists, cancel any calls as we don't want to persist them to the next session
+      for (const call of Object.values(this.ongoingCalls)) {
+        call.fail("disconnected", "session closed")
+        delete this.ongoingCalls[call.call_id]
+      }
+      // also reset all game state and dispatch the blank state
       this.gameStateJson = {}
       this.dispatchUpdatedGameState()
     }
   }
 
-  removeSession() {
+  private removeSession() {
     this.setSession(null)
   }
 
-  connect(url: string) {
-    this.url = url
-    this.openConnection()
-  }
-
-  openConnection() {
+  private doConnect() {
     log.debug("opening websocket")
     const ws = new WebSocket(this.url!)
     this.socket = ws
@@ -141,13 +178,14 @@ export default class GameSocket {
       this.connectAttempts = 0
       this.connected = true
       this.socket!.send(JSON.stringify({
-        "version": UI_VERSION
+        version: UI_VERSION
       }))
     })
 
     ws.addEventListener("close", (e) => {
       // if we closed the connection ourselves, don't mind disconnection
-      if (this.closeRequested) return
+      if (this.closeRequested)
+        return
       // if the close is due to a protocol error, reload the page
       if (e.code === 1003) {
         log.error(`connection closed due to protocol error: ${e.reason}`)
@@ -161,9 +199,10 @@ export default class GameSocket {
       this.updateReconnectionTimer()
     })
 
-    ws.addEventListener("message", (e: MessageEvent) => {
+    ws.addEventListener("message", async (e: MessageEvent) => {
       // if we are closing the connection, ignore messages
-      if (this.closeRequested) return
+      if (this.closeRequested)
+        return
       // all messages are JSON
       const data = JSON.parse(e.data)
 
@@ -182,7 +221,7 @@ export default class GameSocket {
         // log in with existing session if one exists
         if (this.session !== null) {
           // doRelogin will reauthenticate and mark the connection as connected when done
-          this.doRelogin()
+          await this.doRelogin()
         } else {
           this.onConnectionStateChange("connected")
         }
@@ -197,82 +236,79 @@ export default class GameSocket {
         return
       }
 
-      // handle responses to calls
-      else if ("call_id" in data) {
-        // find the corresponding promise
-        const call = this.ongoingCalls[data.call_id]
-        if (!call) throw new Error("got response to unknown call from server")
-        if (data.error) {
-          // pass error to caller via promise
-          call.fail(data.error, data.description)
-          // if error occurs due to missing authentication, reset the session
-          // TODO: this might cause problems if some kind of desync can cause
-          //  calls to be made while the socket is not authenticated; this could
-          //  cause the saved session to be lost even if it is valid
-          if (data.error === "not_authenticated") {
-            this.authenticated = false
-            this.removeSession()
-            this.onConnectionStateChange("connected")
-          }
-        } else {
-          // pass result to caller via promise
-          call.success(data)
-        }
-        // call finished, forget it
-        delete this.ongoingCalls[data.call_id]
-        return
-      }
-
-      // ignore state updates when logged out
-      if (!this.session)
-        return
-
-      // handle state updates
-      log.debug("UPDATE", data)
-
-      // reset all game state data when leaving a game
-      if (data.game === null && this.gameStateJson.game !== null)
-        this.gameStateJson = {}
-
-      let updated = false
-      if ("game" in data) {
-        this.gameStateJson.game = data.game
-        updated = true
-      }
-      if ("hand" in data) {
-        this.gameStateJson.hand = data.hand
-        updated = true
-      }
-      if ("players" in data) {
-        this.gameStateJson.players = data.players
-        updated = true
-      }
-      if ("options" in data) {
-        this.gameStateJson.options = data.options
-        updated = true
-      }
-      if (updated)
-        this.dispatchUpdatedGameState()
-
-      // handle game events
-      if ("events" in data) {
-        for (const event of data.events) {
-          log.debug("EVENT", event)
-          this.appState!.handleEvent(event)
-        }
-      }
+      // handle responses to calls and state updates
+      if ("call_id" in data)
+        this.handleCallResult(data)
+      else
+        this.handleUpdate(data)
     })
   }
 
-  dispatchUpdatedGameState() {
-    if (!["game", "options", "hand", "players"].every(attr => attr in this.gameStateJson) || this.gameStateJson.game === null) {
+  private handleCallResult(data: any) {
+    // find the corresponding promise
+    const call = this.ongoingCalls[data.call_id]
+    if (!call)
+      throw new Error("got response to unknown call from server")
+
+    if (data.error) {
+      // pass error to caller via promise
+      call.fail(data.error, data.description)
+      // if error occurs due to missing authentication, reset the session
+      // TODO: this might cause problems if some kind of desync can cause
+      //  calls to be made while the socket is not authenticated; this could
+      //  cause the saved session to be lost even if it is valid
+      if (data.error === "not_authenticated") {
+        this.authenticated = false
+        this.removeSession()
+        this.onConnectionStateChange("connected")
+      }
+    } else {
+      // pass result to caller via promise
+      call.success(data)
+    }
+    // call finished, forget it
+    delete this.ongoingCalls[data.call_id]
+  }
+
+  private handleUpdate(data: any) {
+    // ignore state updates when logged out
+    if (!this.session)
+      return
+
+    log.debug("UPDATE", data)
+
+    // reset all game state data when leaving a game
+    if (data.game === null && this.gameStateJson.game !== null)
+      this.gameStateJson = {}
+
+    let updated = false
+    for (const key of ["game", "hand", "players", "options"]) {
+      if (key in data)
+        this.gameStateJson[key] = data[key]
+    }
+    if (updated)
+      this.dispatchUpdatedGameState()
+
+    // handle game events
+    if ("events" in data) {
+      for (const event of data.events) {
+        log.debug("EVENT", event)
+        this.appState!.handleEvent(event)
+      }
+    }
+  }
+
+  private dispatchUpdatedGameState() {
+    // only pass updates on when all update keys have been received
+    if (!["game", "options", "hand", "players"].every(attr => attr in this.gameStateJson)
+        || this.gameStateJson.game === null) {
       this.appState.updateGameState(null)
     } else {
       this.appState.updateGameState(this.gameStateJson as UpdateRoot)
     }
   }
 
-  async doRelogin() {
+  private async doRelogin() {
     try {
       await this.doAuthenticate({
         id: this.session!.id,
@@ -288,23 +324,23 @@ export default class GameSocket {
     }
   }
 
-  async doAuthenticate(params: object) {
+  private async doAuthenticate(params: object) {
     const response = await this.call<AuthenticateResponse>("authenticate", params, false)
     const session = new UserSession(response)
     this.authenticated = true
     // send persistent calls from previous connection (before notifying the client, as that might cause new calls)
-    for (const call of Object.values(this.ongoingCalls)) {
+    for (const call of Object.values(this.ongoingCalls))
       call.send()
-    }
+    // now notify the client of the new session
     this.setSession(session)
     this.onConnectionStateChange("connected")
     return true
   }
 
-  updateReconnectionTimer() {
+  private updateReconnectionTimer() {
     if (this.reconnectDelay <= 0) {
       this.onConnectionStateChange(this.connectAttempts > 0 ? "retry_reconnect" : "reconnect")
-      this.openConnection()
+      this.doConnect()
     } else {
       this.onConnectionStateChange(this.connectAttempts > 0 ? "retry_sleep" : "reconnect", this.reconnectDelay)
       this.reconnectTimeout = setTimeout(() => {
@@ -314,7 +350,7 @@ export default class GameSocket {
     }
   }
 
-  handleDisconnection() {
+  private handleDisconnection() {
     this.connected = false
     this.handshaked = false
     this.authenticated = false
@@ -327,13 +363,19 @@ export default class GameSocket {
     }
   }
 
-  handleProtocolError() {
+  private handleProtocolError() {
     this.disconnect()
     this.onConnectionStateChange("protocol_error")
     setTimeout(() => window.location.reload(), 2000)
   }
 
-  async call<R>(action: string, data: object = {}, persistent = false) {
+  /**
+   * Asynchronously sends a call to the API over WebSocket and returns the result.
+   * @param action the API action name
+   * @param data the call parameters, if any
+   * @param persistent `true` to resend ongoing calls after reconnection (otherwise they fail on disconnection)
+   */
+  async call<R>(action: string, data: any = {}, persistent = false) {
     const thisSocket = this
     return await new Promise<R>((resolve, reject) => {
       const call_id = uniqueId()
@@ -359,14 +401,15 @@ export default class GameSocket {
       }
       log.debug(`${call_id} > ${action}`, data)
 
-      const canPerformInCurrentState = action === "authenticate" ? this.handshaked : this.authenticated
-      if (!canPerformInCurrentState && !persistent) {
+      const canSendNow = action === "authenticate" ? this.handshaked : this.authenticated
+      if (!canSendNow && !persistent) {
         call.fail("disconnected", "not connected to server")
         return
       }
 
       this.ongoingCalls[call_id] = call
-      if (canPerformInCurrentState) call.send()
+      if (canSendNow)
+        call.send()
     })
   }
 }

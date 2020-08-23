@@ -1,8 +1,11 @@
 import {toast} from "react-toastify"
 import React from "react"
 
+/**
+ * Dispatches event messages to toasts and chat.
+ */
 export default class MessageHandler {
-  chatMessages: any[] = []
+  private chatMessages: any[] = []
   onChatMessagesChange: (messages: any[]) => void = () => {}
 
   addChatMessage(message: any) {

@@ -86,7 +86,7 @@ const InstructionsView = ({ chosenWhites, selectedWhitePos }: InstructionsViewPr
     if (toPlay) {
       action = <>Play {toPlay} {toPlay === chosenWhites.length ? "" : "more "}card{toPlay > 1 ? "s" : ""}.</>
     } else {
-      action = <>Confirm your selection{state.currentRound!.pickCount > 1 ? "s" : ""}. Click a card to unselect.</>
+      action = <>Confirm your selection{state.currentRound.pickCount > 1 ? "s" : ""}. Click a card to unselect.</>
     }
   } else if (state.state === "playing") {
     action = <>Waiting for the other players to play&hellip;</>
@@ -124,7 +124,7 @@ const TableView = ({ chosenWhites, selectedWhitePos,  windowWidth, unselectCard,
   const game = useContext(GameContext)!
   const acting = useContext(ActingContext)
 
-  if (!game.currentRound)
+  if (!game.running)
     return null
 
   const confirmPlay = async () => {
@@ -140,10 +140,10 @@ const TableView = ({ chosenWhites, selectedWhitePos,  windowWidth, unselectCard,
 
   const confirmJudge = async () => {
     // ensure a valid state
-    if (!game.shouldJudge || selectedWhitePos === null || selectedWhitePos >= game.currentRound!.whiteCards!.length)
+    if (!game.shouldJudge || selectedWhitePos === null || selectedWhitePos >= game.currentRound.whiteCards!.length)
       return
     try {
-      await app.chooseWinner(game.currentRound!.whiteCards![selectedWhitePos][0])
+      await app.chooseWinner(game.currentRound.whiteCards![selectedWhitePos][0])
     } catch (error) {
       unknownError(error)
     }
@@ -186,7 +186,7 @@ const TableView = ({ chosenWhites, selectedWhitePos,  windowWidth, unselectCard,
 
   if ((game.state === "judging" || game.state === "round_ended") && table !== null) {
     whiteCards = table!.map((group: WhiteCard[], pos: number) => {
-      const won = game.state === "round_ended" && game.currentRound!.winningCardsId === group[0].id
+      const won = game.state === "round_ended" && game.currentRound.winningCardsId === group[0].id
       const selected = selectedWhitePos === pos
       const actions = selected ? (
           <button type="button" disabled={acting} onClick={() => confirmJudge()}>Confirm selection</button>
@@ -303,11 +303,12 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
     const {game} = props
     let newState = {}
     // clear chosen white cards if not playing any
-    if (game.roundId !== state.currentRoundId || !game.shouldPlayWhiteCards) {
+    const roundIdIfRunning = game.running ? game.currentRound.id : null
+    if (roundIdIfRunning !== state.currentRoundId || !game.shouldPlayWhiteCards) {
       newState = {
         ...newState,
-        chosenWhites: game.currentRound && Array(game.currentRound.pickCount).fill(null),
-        currentRoundId: game.roundId,
+        chosenWhites: game.running ? Array(game.currentRound.pickCount).fill(null) : null,
+        currentRoundId: roundIdIfRunning,
       }
     }
     // reset chosen white card as this slot is used for different purposes in different states
@@ -336,22 +337,23 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
     }
 
     const selectCard = (card: WhiteCard) => {
+      const {chosenWhites, selectedWhitePos} = this.state
       // can't reselect a card
-      if (this.state.chosenWhites!.some(chosen => chosen && chosen.id === card.id))
+      if (chosenWhites!.some(chosen => chosen && chosen.id === card.id))
         return
-      // ensure a valid slot
-      if (this.state.selectedWhitePos === null || !game.currentRound || this.state.selectedWhitePos >= game.currentRound.pickCount)
+      // ensure a valid slot is selected
+      if (!game.running || selectedWhitePos === null || selectedWhitePos >= game.currentRound.pickCount)
         return
       // put the card in place
-      const newChosenWhites = [...this.state.chosenWhites!]
-      newChosenWhites[this.state.selectedWhitePos!] = card
+      const newChosenWhites = [...chosenWhites!]
+      newChosenWhites[selectedWhitePos] = card
       // find a free slot, if any
-      const nextFreePos = range(this.state.selectedWhitePos + 1, game.currentRound.pickCount)
-          .concat(range(0, this.state.selectedWhitePos))
-          .find(pos => newChosenWhites[pos] === null)
+      const nextFreePos = range(selectedWhitePos + 1, game.currentRound.pickCount)
+          .concat(range(0, selectedWhitePos))
+          .find(pos => newChosenWhites[pos] === null) ?? null
       this.setState({
         chosenWhites: newChosenWhites,
-        selectedWhitePos: nextFreePos === undefined ? null : nextFreePos,
+        selectedWhitePos: nextFreePos,
       })
     }
 
