@@ -283,8 +283,10 @@ export default class GameSocket {
 
     let updated = false
     for (const key of ["game", "hand", "players", "options"]) {
-      if (key in data)
+      if (key in data) {
         this.gameStateJson[key] = data[key]
+        updated = true
+      }
     }
     if (updated)
       this.dispatchUpdatedGameState()
