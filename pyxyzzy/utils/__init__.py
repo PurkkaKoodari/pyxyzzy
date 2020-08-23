@@ -1,5 +1,4 @@
-from asyncio import Task, create_task, sleep
-from asyncio.exceptions import CancelledError
+from asyncio import Task, create_task, sleep, CancelledError
 from logging import getLogger
 from random import choices
 from traceback import format_stack
