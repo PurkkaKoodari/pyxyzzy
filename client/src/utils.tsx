@@ -128,5 +128,5 @@ export const englishList = (items: string[], verb?: [string, string]) => {
  * @param millis the number of milliseconds to sleep
  */
 export const sleep = async (millis: number) => {
-  await new Promise(resolve => setTimeout(() => resolve(), millis))
+  await new Promise<void>(resolve => setTimeout(() => resolve(), millis))
 }
