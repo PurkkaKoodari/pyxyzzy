@@ -63,4 +63,23 @@
             text-transform: uppercase;
         }
     }
+    .players {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-evenly;
+        margin-bottom: 5px;
+
+        .player {
+            //flex: 1 0 50px;
+            text-align: center;
+            padding: 5px;
+            border-radius: 5px;
+            min-width: 12ch;
+            background-color: #ccf;
+
+            .score, .status {
+                font-size: 0.9em;
+            }
+        }
+    }
 }

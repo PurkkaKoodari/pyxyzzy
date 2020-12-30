@@ -4,7 +4,7 @@ import {handleAllErrorsAsUnknown, range, unknownError, useWindowWidth} from "../
 import {ActingContext, AppStateContext, ConfigContext, GameContext, UserContext} from "./contexts"
 import GameOptions from "./GameOptions"
 import {BlackCardView, WhiteCardGroup, WhiteCardPlaceholder, WhiteCardView} from "./cards"
-import {GameState, WhiteCard} from "../state"
+import {GameState, Player, WhiteCard} from "../state"
 
 // minimum scale to render cards at. if this doesn't fit, well, you're screwed
 const MINIMUM_CARD_SCALE = 0.7
@@ -279,6 +279,56 @@ const HandView = ({ chosenWhites, windowWidth, selectCard }: HandViewProps) => {
   )
 }
 
+interface PlayerViewProps {
+  player: Player
+}
+
+const PlayerView = ({ player }: PlayerViewProps) => {
+  const game = useContext(GameContext)!
+
+  let status = ""
+  let thinking = false
+
+  if (player.isThinking) {
+    status = "Playing"
+    thinking = true
+  } else if (game.state === "judging" && player === game.cardCzar) {
+    status = "Judging"
+    thinking = true
+  } else if (game.running && player === game.cardCzar) {
+    status = "Card Czar"
+  } else if (player === game.host) {
+    status = "Host"
+  }
+
+  return (
+      <div className={`player ${thinking ? "thinking" : ""}`}>
+        <div className="icon"></div>
+        <div className="name">{player.name}</div>
+        <div className="score">{player.score} points</div>
+        <div className="status">{status}</div>
+      </div>
+  )
+}
+
+interface PlayersViewProps {
+
+}
+
+const PlayersView = ({}: PlayersViewProps) => {
+  const game = useContext(GameContext)!
+
+  return (
+      <div className="players">
+        {game.players.map(player =>
+          <PlayerView
+              key={player.id}
+              player={player} />
+        )}
+      </div>
+  )
+}
+
 type GameScreenProps = {
   game: GameState
   windowWidth: number
@@ -370,6 +420,7 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
               windowWidth={this.props.windowWidth}
               unselectCard={unselectCard}
               selectPos={pos => this.setState({selectedWhitePos: pos})} />
+          <PlayersView />
           <HandView
               chosenWhites={this.state.chosenWhites!}
               windowWidth={this.props.windowWidth}
