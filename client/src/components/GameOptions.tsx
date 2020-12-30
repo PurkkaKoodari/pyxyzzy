@@ -2,6 +2,7 @@ import React, {ChangeEvent, InputHTMLAttributes, useContext, useEffect, useRef, 
 import "./GameOptions.scss"
 import {uniqueId, unknownError} from "../utils"
 import {AppStateContext, ConfigContext, GameContext} from "./contexts"
+import PlayersView from "./PlayersView"
 
 interface OptionsInputFieldProps {
   type: string
@@ -170,7 +171,7 @@ const GameOptions = () => {
       <div className="options">
         <div className="category joining">
           <h4>Joining</h4>
-          <div>
+          <div className="category-contents">
             <OptionsInput
                 state={app}
                 type="text"
@@ -204,7 +205,7 @@ const GameOptions = () => {
         </div>
         <div className="category idle">
           <h4>Idle timers</h4>
-          <div>
+          <div className="category-contents">
             <OptionsInput
                 state={app}
                 type="number"
@@ -236,7 +237,7 @@ const GameOptions = () => {
         </div>
         <div className="category rules">
           <h4>Rules</h4>
-          <div>
+          <div className="category-contents">
             <OptionsInput
                 type="number"
                 name="blank_cards"
@@ -257,12 +258,16 @@ const GameOptions = () => {
         </div>
         <div className="category packs">
           <h4>Cards</h4>
-          <div>
+          <div className="category-contents">
             <OptionsInput
                 state={app}
                 type="card_packs"
                 name="card_packs" />
           </div>
+        </div>
+        <div className="category players">
+          <h4>Players</h4>
+          <PlayersView />
         </div>
         <button type="button" className="bottom toggler" onClick={toggleOpen}>
           Close &#x25B2;

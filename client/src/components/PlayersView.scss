@@ -1,0 +1,66 @@
+@import "defs";
+
+.players {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-evenly;
+    align-items: stretch;
+    margin: 0 0.25rem 5px 0.25rem;
+
+    .player {
+        text-align: center;
+        margin: 0 0.25rem;
+        padding: 0.4rem;
+        border: 1px solid #aaa;
+        min-width: 12ch;
+        background: $themeHandBg;
+        border-radius: 10px;
+
+        .score, .status {
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+        .score.leader {
+            font-weight: bold;
+        }
+        .think-blob {
+            display: inline-block;
+            width: 1ch;
+            height: 1ch;
+            background: #666;
+            border-radius: 1ch;
+            animation: 1000ms 0ms think-blob infinite ease;
+            margin-left: 0.25ch;
+
+            &.blob-1 {
+                margin-left: 0.7ch;
+            }
+            &.blob-2 {
+                animation-delay: 125ms;
+            }
+            &.blob-3 {
+                animation-delay: 250ms;
+            }
+        }
+    }
+}
+
+.in-game .options-container .players {
+    justify-content: flex-start;
+    margin-left: 0.55rem;
+}
+
+@keyframes think-blob {
+    0% {
+        height: 1ch;
+        background: #666;
+    }
+    25% {
+        height: 1.5ch;
+        background: #66c;
+    }
+    50% {
+        height: 1ch;
+        background: #666;
+    }
+}
