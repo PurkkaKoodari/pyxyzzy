@@ -30,13 +30,14 @@ const PlayerView = ({player}: PlayerViewProps) => {
   return (
       <div className={`player ${thinking ? "thinking" : ""}`}>
         <div className="name">{player.name}</div>
-        <div
-            className={`score ${leader ? "leader" : ""}`}>{player.score} {player.score === 1 ? "point" : "points"}</div>
+        <div className={`score ${leader ? "leader" : ""}`}>
+          {player.score} {player.score === 1 ? "point" : "points"}
+        </div>
         <div className="status">
           {status}
-          {thinking ? <div className="think-blob blob-1"/> : null}
-          {thinking ? <div className="think-blob blob-2"/> : null}
-          {thinking ? <div className="think-blob blob-3"/> : null}
+          <div className="think-blob blob-1" />
+          <div className="think-blob blob-2" />
+          <div className="think-blob blob-3" />
         </div>
       </div>
   )

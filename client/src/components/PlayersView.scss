@@ -24,7 +24,7 @@
             font-weight: bold;
         }
         .think-blob {
-            display: inline-block;
+            display: none;
             width: 1ch;
             height: 1ch;
             background: #666;
@@ -42,7 +42,14 @@
                 animation-delay: 250ms;
             }
         }
+        &.thinking .think-blob {
+            display: inline-block;
+        }
     }
+}
+
+.in-game.game-state-not_started .players .score, .in-game .options-container .players .score {
+    display: none;
 }
 
 .in-game .options-container .players {
