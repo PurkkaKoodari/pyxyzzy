@@ -8,13 +8,15 @@ import LoginScreen from "./LoginScreen"
 import {ActingContext, AppStateContext, ConfigContext, GameContext, UserContext} from "./contexts"
 import {AppState, GameState, UserSession} from "../state"
 import {ConfigRoot} from "../api"
+import {ConnectionState} from "../GameSocket"
+import {toast} from "react-toastify"
 
 const SERVER_URL = `ws://${window.location.hostname}:8080/ws`
 
 class AppComponentState {
   appState: AppState
 
-  connectionState: string = "connect"
+  connectionState: ConnectionState = "connect"
   config: ConfigRoot | null = null
   retryTime: number | undefined
 
@@ -42,6 +44,9 @@ class App extends Component<{}, AppComponentState> {
       document.documentElement.classList.toggle("connecting", connectionState !== "connected")
     }
     appState.connection.onConfigChange = config => this.setState({config})
+    appState.connection.onReloginFailed = () => {
+      toast.error("You were logged out for being disconnected for too long, or the server restarted. Please log in again.")
+    }
 
     appState.onUserUpdated = userSession => this.setState({userSession})
     appState.onGameStateUpdated = gameState => this.setState({gameState})

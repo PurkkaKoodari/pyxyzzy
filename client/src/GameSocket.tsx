@@ -58,6 +58,8 @@ interface WritableUpdateRoot extends UpdateRoot {
   [key: string]: UpdateGame | readonly UpdatePlayer[] | readonly UpdateWhiteCard[] | UpdateOptions
 }
 
+export type ConnectionState = "connect" | "reconnect" | "connected" | "retry_sleep" | "retry_reconnect" | "connected_elsewhere" | "protocol_error"
+
 /**
  * Manages the WebSocket connection for the game, handles authentication, API calls and tracks state updates.
  */
@@ -68,9 +70,11 @@ export default class GameSocket {
   private readonly appState: AppState
 
   // called when the (client-facing) connection state changes
-  onConnectionStateChange: (status: string, retryIn?: number) => void = () => {}
+  onConnectionStateChange: (status: ConnectionState, retryIn?: number) => void = () => {}
   // called when a config is received from the server
   onConfigChange: (config: any) => void = () => {}
+  // called when automatic re-login fails (the session doesn't exist on the server)
+  onReloginFailed: () => void = () => {}
 
   // WebSocket instance
   private socket: WebSocket | null = null
@@ -322,6 +326,7 @@ export default class GameSocket {
         this.removeSession()
         // set the connection state so that the client knows it can reauthenticate manually
         this.onConnectionStateChange("connected")
+        this.onReloginFailed()
       }
     }
   }
