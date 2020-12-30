@@ -82,7 +82,7 @@ $togglerHeight: 1.6rem;
             align-items: baseline;
             padding-left: 0.8rem;
             white-space: nowrap;
-            
+
             &.type-text {
                 flex: 0 1 32ch;
                 max-width: 100%;
@@ -104,13 +104,15 @@ $togglerHeight: 1.6rem;
                 }
                 &[type=checkbox] {
                     position: relative;
-                    top: 0.1rem;
+                    top: 0.2em;
                 }
             }
         }
+        // make card packs' checkboxes appear on the left side of the label to be more readable with lots of them
+        // (the checkboxes are on the right side in HTML for consistency in other parts of the settings)
         .packs .field input[type=checkbox] {
-            margin: 0 0.3rem 0 0;
             order: -1;
+            margin: 0 0.3rem 0 0;
         }
     }
 }

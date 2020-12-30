@@ -14,29 +14,42 @@ interface OptionsInputFieldProps {
 }
 
 const OptionsInputField = ({ type, name, title, label, handleChange, value, ...attrs }: OptionsInputFieldProps) => {
-  const fieldAttrs = attrs as InputHTMLAttributes<any>
   if (type === "checkbox") {
-    fieldAttrs["checked"] = value as boolean
-    fieldAttrs["onChange"] = handleChange(true)
+    return (
+      <label className={`field type-${type}`}
+          htmlFor={`game-options-${name}`}
+          title={title}>
+          {label}
+          <input
+            type={type}
+            name={name}
+            id={`game-options-${name}`}
+            title={title}
+            checked={value as boolean}
+            onChange={handleChange(true)}
+            {...attrs} />
+      </label>
+    )
   } else {
-    fieldAttrs["value"] = value as string
-    fieldAttrs["onChange"] = handleChange(false)
-    fieldAttrs["onBlur"] = handleChange(true)
+    return (
+      <div className={`field type-${type}`}>
+        <label
+          htmlFor={`game-options-${name}`}
+          title={title}>
+          {label}
+        </label>
+        <input
+          type={type}
+          name={name}
+          id={`game-options-${name}`}
+          title={title}
+          value={value as string}
+          onChange={handleChange(false)}
+          onBlur={handleChange(true)}
+          {...attrs} />
+      </div>
+    )
   }
-
-  return (
-    <div className={`field type-${type}`}>
-      <label
-        htmlFor={`game-options-${name}`}
-        title={title}>{label}</label>
-      <input
-        type={type}
-        name={name}
-        id={`game-options-${name}`}
-        title={title}
-        {...attrs} />
-    </div>
-  )
 }
 
 type OptionTypeName = "text" | "number" | "checkbox" | "card_packs"
