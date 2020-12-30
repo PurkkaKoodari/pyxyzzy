@@ -301,12 +301,18 @@ const PlayerView = ({ player }: PlayerViewProps) => {
     status = "Host"
   }
 
+  const leader = game.players.every(other => other.score <= player.score)
+
   return (
       <div className={`player ${thinking ? "thinking" : ""}`}>
-        <div className="icon"></div>
         <div className="name">{player.name}</div>
-        <div className="score">{player.score} points</div>
-        <div className="status">{status}</div>
+        <div className={`score ${leader ? "leader" : ""}`}>{player.score} {player.score === 1 ? "point" : "points"}</div>
+        <div className="status">
+          {status}
+          {thinking ? <div className="think-blob blob-1" /> : null}
+          {thinking ? <div className="think-blob blob-2" /> : null}
+          {thinking ? <div className="think-blob blob-3" /> : null}
+        </div>
       </div>
   )
 }
