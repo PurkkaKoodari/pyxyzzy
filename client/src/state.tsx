@@ -199,7 +199,7 @@ export class AppState {
   readonly messageHandler: MessageHandler
   private userNullable: UserSession | null = null
   private gameNullable: GameState | null = null
-  private isActing: boolean = false
+  private acting: boolean = false
 
   onUserUpdated: (user: UserSession | null) => void = () => {}
   onGameStateUpdated: (game: GameState | null) => void = () => {}
@@ -222,12 +222,8 @@ export class AppState {
     return this.gameNullable
   }
 
-  private get acting() {
-    return this.isActing
-  }
-
-  private set acting(acting: boolean) {
-    this.isActing = acting
+  private setActing(acting: boolean) {
+    this.acting = acting
     this.onActingChanged(acting)
   }
 
@@ -243,14 +239,14 @@ export class AppState {
       log.warn("Canceling", action, "because another action is already ongoing")
       throw new Error("another action is already ongoing")
     }
-    this.acting = true
+    this.setActing(true)
     try {
       if (typeof action === "string")
         return await this.connection.call(action, params, persistent)
       else
         return await action()
     } finally {
-      this.acting = false
+      this.setActing(false)
     }
   }
 
@@ -316,9 +312,9 @@ export class AppState {
 
   updateSession(session: UserSession | null) {
     this.userNullable = session
-    if (!session)
-      this.acting = false
     this.onUserUpdated(this.userNullable)
+    if (!session)
+      this.setActing(false)
   }
 
   updateGameState(update: UpdateRoot | null) {
