@@ -104,11 +104,14 @@ $activeWhiteCardGroup: #536099;
 
                 &.blank {
                     flex: 1 0 auto;
+                    max-width: 90%;
                 }
                 .blank {
                     border-bottom: 0.11em solid $blackCardText;
                     flex: 1 0 6ch;
                     width: 6ch;
+                    position: relative;
+                    top: -0.2em;
                 }
             }
         }
