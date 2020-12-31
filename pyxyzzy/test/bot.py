@@ -484,6 +484,13 @@ class RandomPlayBot(BotBase):
         elif self.game_state == "judging" and self.action_state == "not_acted" and self.player_id == self.card_czar_id:
             self._perform_action(self.play_czar())
 
+    def handle_event(self, event: dict) -> None:
+        if self.finished:
+            return
+        # allow bots to be force-quit from games via chat
+        if event.get("type") == "chat_message" and event["text"] in ("bot all quit", f"bot {self.username} quit"):
+            self.quit()
+
     async def join_or_create_game(self):
         while True:
             # sleep randomly to avoid race conditions
