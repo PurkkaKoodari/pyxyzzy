@@ -1,0 +1,79 @@
+@import "defs";
+
+$togglerHeight: 1.6rem;
+
+.chat-container {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    height: $togglerHeight;
+    z-index: $chatZ;
+
+    .toggler {
+        padding: 0;
+        height: $togglerHeight;
+        outline: none;
+        background: $themeGlobalBg;
+        border: solid black;
+        border-width: 1px 0;
+        text-transform: uppercase;
+
+        .arrow {
+            display: inline-block;
+            transition: transform 0.3s ease;
+            transform: translateY(0) rotate(-0deg);
+        }
+    }
+    .chat {
+        display: flex;
+        flex-direction: column;
+        transform: translateY(0);
+        transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+        max-height: 80vh;
+        background: $themeGlobalBg;
+        box-shadow: rgba(0, 0, 0, 0) 0 0 0.5rem 0.5rem;
+    }
+    &.open {
+        .chat {
+            transform: translateY(calc(#{$togglerHeight} - 100%));
+            box-shadow: rgba(0, 0, 0, 0.3) 0 0 0.5rem 0.5rem;
+        }
+        .toggler {
+            border-color: #aaa;
+
+            .arrow {
+                transform: translateY(-0.2rem) rotate(-60deg);
+            }
+        }
+    }
+    .messages {
+        flex: 0 1 500px;
+        overflow: hidden scroll;
+        margin: 0 0.5rem;
+        user-select: text;
+    }
+    .message {
+        word-wrap: break-word;
+
+        .timestamp {
+            color: #555;
+        }
+        &.type-error {
+            color: #c00;
+        }
+        &.type-warning {
+            color: #990;
+        }
+    }
+    .field {
+        display: flex;
+
+        #chat-input {
+            min-width: 15ch;
+            flex: 1 1;
+        }
+    }
+}

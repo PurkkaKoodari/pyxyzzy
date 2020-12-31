@@ -1,6 +1,5 @@
 @import "defs";
-
-$togglerHeight: 1.6rem;
+@import "slidebox";
 
 .in-game {
     .options-container {
@@ -23,7 +22,7 @@ $togglerHeight: 1.6rem;
 
                 .arrow {
                     display: inline-block;
-                    transition: transform 0.3s ease, vertical-align 0.3s ease;
+                    transition: transform 0.3s ease;
                     transform: translateY(0) rotate(-0deg);
                 }
             }
@@ -34,6 +33,7 @@ $togglerHeight: 1.6rem;
         &.open {
             .options {
                 transform: translateY(0);
+                box-shadow: rgba(0, 0, 0, 0.3) 0 0 0.5rem 0.5rem;
             }
             .toggler.top .arrow {
                 transform: translateY(0.2rem) rotate(-60deg);
@@ -50,12 +50,17 @@ $togglerHeight: 1.6rem;
     .options {
         display: flex;
         flex-direction: column;
-        transform: translateY(calc(-100%));
-        transition: transform 0.3s ease;
+        transform: translateY(-100%);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
         background: $themeGlobalBg;
         position: relative;
         z-index: $optionsZ;
+        box-shadow: rgba(0, 0, 0, 0) 0 0 0.5rem 0.5rem;
 
+        > .scroll {
+            max-height: 75vh;
+            overflow-y: auto;
+        }
         .category {
             display: flex;
             align-items: baseline;

@@ -1,4 +1,4 @@
-import React, {useContext} from "react"
+import {useContext} from "react"
 import "./PlayersView.scss"
 import {GameContext} from "./contexts"
 import {Player} from "../state"
@@ -10,7 +10,7 @@ interface PlayerViewProps {
 const PlayerView = ({player}: PlayerViewProps) => {
   const game = useContext(GameContext)!
 
-  let status = ""
+  let status = "\xA0" // NBSP
   let thinking = false
 
   if (player.isThinking) {

@@ -365,23 +365,25 @@ class GameScreen extends Component<GameScreenProps, GameScreenState> {
           <InstructionsView
               chosenWhites={this.state.chosenWhites!}
               selectedWhitePos={this.state.selectedWhitePos} />
-          <TableView
-              chosenWhites={this.state.chosenWhites!}
-              selectedWhitePos={this.state.selectedWhitePos}
-              windowWidth={this.props.windowWidth}
-              unselectCard={unselectCard}
-              selectPos={pos => this.setState({selectedWhitePos: pos})} />
-          <PlayersView />
-          <HandView
-              chosenWhites={this.state.chosenWhites!}
-              windowWidth={this.props.windowWidth}
-              selectCard={selectCard} />
+          <div className="scroll">
+            <TableView
+                chosenWhites={this.state.chosenWhites!}
+                selectedWhitePos={this.state.selectedWhitePos}
+                windowWidth={this.props.windowWidth}
+                unselectCard={unselectCard}
+                selectPos={pos => this.setState({selectedWhitePos: pos})} />
+            <PlayersView />
+            <HandView
+                chosenWhites={this.state.chosenWhites!}
+                windowWidth={this.props.windowWidth}
+                selectCard={selectCard} />
+          </div>
         </div>
     )
   }
 }
 
-const GameScreenContextWrapper = (props: {chatMessages: any}) => {
+const GameScreenContextWrapper = () => {
   const windowWidth = useWindowWidth()
 
   return (
@@ -389,8 +391,7 @@ const GameScreenContextWrapper = (props: {chatMessages: any}) => {
         {game => (
             <GameScreen
                 game={game!}
-                windowWidth={windowWidth}
-                {...props} />
+                windowWidth={windowWidth} />
         )}
       </GameContext.Consumer>
   )

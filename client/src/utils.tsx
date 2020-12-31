@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from "react"
+import {ReactNode, useEffect, useRef, useState} from "react"
 import { toast } from "react-toastify"
 
 /**
@@ -116,11 +116,20 @@ export class Lock {
  * @param items the items to format
  * @param verb the verb to append to the list, if any
  */
-export const englishList = (items: string[], verb?: [string, string]) => {
+export const englishList = (items: ReactNode[], verb?: [string, string]) => {
   if (items.length === 1)
-    return items[0] + (verb ? ` ${verb[0]}` : "")
-  else
-    return items.slice(0, -1).join(", ") + " and " + items[items.length - 1] + (verb ? ` ${verb[1]}` : "")
+    return [items[0], verb ? ` ${verb[0]}` : ""]
+
+  const parts = []
+  for (let i = 0; i < items.length; i++) {
+    parts.push(items[i])
+    if (i < items.length - 2)
+      parts.push(", ")
+    else if (i === items.length - 2)
+      parts.push(" and ")
+  }
+  parts.push(verb ? ` ${verb[1]}` : "")
+  return parts
 }
 
 /**

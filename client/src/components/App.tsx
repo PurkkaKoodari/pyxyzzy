@@ -10,6 +10,7 @@ import {AppState, GameState, UserSession} from "../state"
 import {ConfigRoot} from "../api"
 import {ConnectionState} from "../GameSocket"
 import {toast} from "react-toastify"
+import ChatView from "./ChatView"
 
 const SERVER_URL = `ws://${window.location.hostname}:8080/ws`
 
@@ -66,11 +67,13 @@ class App extends Component<{}, AppComponentState> {
   render() {
     const {appState, config, userSession, gameState, chatMessages, acting, connectionState, retryTime} = this.state
 
-    let gameScreen = null, connectingScreen = null
+    let gameScreen = null, chatView = null, connectingScreen = null
     if (userSession && gameState) {
-      gameScreen = <GameScreen chatMessages={chatMessages} />
+      gameScreen = <GameScreen />
+      chatView = <ChatView chatMessages={chatMessages} />
     } else if (userSession) {
       gameScreen = <GameList chatMessages={chatMessages} />
+      chatView = <ChatView chatMessages={chatMessages} />
     } else if (config && connectionState !== "connect") {
       gameScreen = <LoginScreen />
     }
@@ -85,6 +88,7 @@ class App extends Component<{}, AppComponentState> {
               <GameContext.Provider value={gameState}>
                 <ActingContext.Provider value={acting}>
                   {gameScreen}
+                  {chatView}
                   {connectingScreen}
                 </ActingContext.Provider>
               </GameContext.Provider>

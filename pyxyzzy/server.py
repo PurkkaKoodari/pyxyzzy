@@ -378,7 +378,8 @@ class GameConnection(ABC):
 
         self.user.game.send_event({
             "type": "chat_message",
-            "text": text
+            "player": self.user.player.to_event_json(),
+            "text": text,
         })
 
 

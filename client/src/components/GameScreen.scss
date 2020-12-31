@@ -1,9 +1,11 @@
 @import "defs";
+@import "slidebox";
 
 .in-game {
     @include default-nav-bar;
 
-    min-height: 100%;
+    height: 100%;
+    padding-bottom: $togglerHeight;
     display: flex;
     flex-direction: column;
 
@@ -29,6 +31,12 @@
         .user-name, .game-code {
             margin-right: 0.5rem;
         }
+    }
+    > .scroll {
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        flex: 1 0 10rem;
     }
     .instructions {
         border-bottom: 1px solid #aaa;

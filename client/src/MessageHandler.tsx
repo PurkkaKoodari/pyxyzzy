@@ -1,34 +1,55 @@
 import {toast} from "react-toastify"
-import React from "react"
+import React, {ReactNode} from "react"
+
+export type ChatMessageType = "log" | "info" | "warning" | "error" | "chat"
+
+/**
+ * Represents a log/chat message. Immutable.
+ */
+export class ChatMessage {
+  readonly time: Date
+  readonly type: ChatMessageType
+  readonly contents: ReactNode
+
+  constructor(type: ChatMessageType, contents: ReactNode, time: Date = new Date()) {
+    this.type = type
+    this.contents = contents
+    this.time = time
+  }
+}
 
 /**
  * Dispatches event messages to toasts and chat.
  */
 export default class MessageHandler {
-  private chatMessages: any[] = []
+  private chatMessages: ChatMessage[] = []
   onChatMessagesChange: (messages: any[]) => void = () => {}
 
-  addChatMessage(message: any) {
+  private add(message: ChatMessage) {
     this.chatMessages.push(message)
     this.onChatMessagesChange(this.chatMessages)
   }
 
-  error(message: string, autoClose?: number | false) {
+  chat(message: ReactNode) {
+    this.add(new ChatMessage("chat", message))
+  }
+
+  error(message: ReactNode, autoClose?: number | false) {
     toast.error(message, {autoClose})
-    this.addChatMessage(<span className="error">{message}</span>)
+    this.add(new ChatMessage("error", message))
   }
 
-  warning(message: string, autoClose?: number | false) {
+  warning(message: ReactNode, autoClose?: number | false) {
     toast.warn(message, {autoClose})
-    this.addChatMessage(<span className="error">{message}</span>)
+    this.add(new ChatMessage("warning", message))
   }
 
-  info(message: string, autoClose?: number | false) {
+  info(message: ReactNode, autoClose?: number | false) {
     toast.info(message, {autoClose})
-    this.addChatMessage(message)
+    this.add(new ChatMessage("info", message))
   }
 
-  log(message: string) {
-    this.addChatMessage(message)
+  log(message: ReactNode) {
+    this.add(new ChatMessage("log", message))
   }
 }

@@ -1,8 +1,12 @@
 @import "defs";
+@import "slidebox";
 
 .game-list {
     @include default-nav-bar;
     @include nav-bar(".public-header");
+
+    padding-bottom: $togglerHeight;
+
     .nav {
         > div {
             flex-wrap: wrap;
