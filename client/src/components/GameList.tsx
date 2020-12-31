@@ -80,7 +80,7 @@ const GameList = ({ chatMessages }: { chatMessages: any[] }) => {
         if (!mounted.is) return
         setGames("error")
       })
-  }, [forcedUpdate, app])
+  }, [forcedUpdate, app, mounted.is])
 
   const handleLogout = handleAllErrorsAsUnknown(() => app.logout())
 

@@ -13,7 +13,7 @@ export const useMounted = () => {
     return () => {
       mounted.is = false
     }
-  }, [])
+  }, [mounted])
   return mounted
 }
 
