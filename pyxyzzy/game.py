@@ -387,8 +387,6 @@ class Game:
     @property
     def winner(self) -> Optional[Player]:
         """Get the player that has won the game, if any."""
-        if self.state != GameState.game_ended:
-            return None
         return max((player for player in self.players if player.score >= self.options.point_limit),
                    default=None, key=lambda player: player.score)
 
@@ -651,10 +649,7 @@ class Game:
         # count the score and start the next round
         self.current_round.winner = winner
         winner.score += 1
-        if winner.score == self.options.point_limit:
-            self._set_state(GameState.game_ended)
-        else:
-            self._set_state(GameState.round_ended)
+        self._set_state(GameState.round_ended)
         # sync state to players
         self.send_updates(UpdateType.game, UpdateType.players)
 
@@ -663,7 +658,12 @@ class Game:
         # discard all played white cards
         for cards in self.current_round.white_cards.values():
             self.white_deck.discard_all(cards)
-        self._start_next_round()
+        # see if somebody won
+        if max(player.score for player in self.players) >= self.options.point_limit:
+            self._set_state(GameState.game_ended)
+            self.send_updates(UpdateType.game)
+        else:
+            self._start_next_round()
 
     def _cancel_round(self):
         if self.state == GameState.round_ended:

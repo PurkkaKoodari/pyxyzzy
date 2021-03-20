@@ -99,19 +99,17 @@ const InstructionsView = ({ chosenWhites, selectedWhitePos }: InstructionsViewPr
     }
   } else if (state.state === "judging") {
     action = <>Waiting for {state.cardCzar.name} to choose a winner&hellip;</>
+  } else if (state.gameWinner && (state.state === "round_ended" || state.state === "game_ended")) {
+    const name = state.gameWinner.id === user.id ? "You" : state.gameWinner.name
+    action = <>{name} won the game!</>
+  } else if (state.state === "game_ended") {
+    action = <>The game ended.</>
   } else if (state.state === "round_ended") {
     if (state.roundWinner) {
       const name = state.roundWinner.id === user.id ? "You" : state.roundWinner.name
       action = <>{name} won the round. Next round starts in {state.options.round_end_time} seconds.</>
     } else {
       action = <>The round has been cancelled. Next round starts in {state.options.round_end_time} seconds.</>
-    }
-  } else if (state.state === "game_ended") {
-    if (state.gameWinner) {
-      const name = state.gameWinner.id === user.id ? "You" : state.gameWinner.name
-      action = <>{name} won the game!</>
-    } else {
-      action = <>The game ended.</>
     }
   }
 
