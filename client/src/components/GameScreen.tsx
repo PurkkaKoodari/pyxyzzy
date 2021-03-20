@@ -106,6 +106,13 @@ const InstructionsView = ({ chosenWhites, selectedWhitePos }: InstructionsViewPr
     } else {
       action = <>The round has been cancelled. Next round starts in {state.options.round_end_time} seconds.</>
     }
+  } else if (state.state === "game_ended") {
+    if (state.gameWinner) {
+      const name = state.gameWinner.id === user.id ? "You" : state.gameWinner.name
+      action = <>{name} won the game!</>
+    } else {
+      action = <>The game ended.</>
+    }
   }
 
   return action && <h3 className="instructions">{action}</h3>

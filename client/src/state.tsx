@@ -131,6 +131,7 @@ export class GameState {
   readonly code: string
   readonly currentRoundNullable: Round | null
   readonly players: readonly Player[]
+  readonly winningPlayerId: string | null
   readonly options: UpdateOptions
   readonly hand: WhiteCard[]
 
@@ -139,6 +140,7 @@ export class GameState {
     this.state = stateJson.game.state
     this.code = stateJson.game.code
     this.currentRoundNullable = stateJson.game.current_round && new Round(stateJson.game.current_round)
+    this.winningPlayerId = stateJson.game.winner
     this.players = stateJson.players.map(player => new Player(player))
     this.options = stateJson.options
     this.hand = stateJson.hand.map(card => new WhiteCard(card))
@@ -172,6 +174,10 @@ export class GameState {
 
   get roundWinner(): Player | null {
     return this.currentRound.winningPlayerId ? this.playerById(this.currentRound.winningPlayerId) : null
+  }
+
+  get gameWinner(): Player | null {
+    return this.winningPlayerId ? this.playerById(this.winningPlayerId) : null
   }
 
   playerById(id: string): Player {

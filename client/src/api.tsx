@@ -148,6 +148,7 @@ export interface UpdateGame {
   readonly state: GameStateEnum
   readonly code: string
   readonly current_round: UpdateRound | null
+  readonly winner: string | null
 }
 
 export interface UpdateRoot {

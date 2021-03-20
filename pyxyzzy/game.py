@@ -384,6 +384,14 @@ class Game:
         """Get the player that has been in the game longest."""
         return self.players[0]
 
+    @property
+    def winner(self) -> Optional[Player]:
+        """Get the player that has won the game, if any."""
+        if self.state != GameState.game_ended:
+            return None
+        return max((player for player in self.players if player.score >= self.options.point_limit),
+                   default=None, key=lambda player: player.score)
+
     def update_options(self, new_options: GameOptions):
         self.options = new_options
         self.send_updates(UpdateType.options)
@@ -720,7 +728,8 @@ class Game:
                                 "player": str(self.current_round.winner.id),
                                 "cards": str(self.current_round.white_cards[self.current_round.winner.id][0].slot_id),
                             } if self.current_round.winner else None
-                        } if self.current_round else None
+                        } if self.current_round else None,
+                        "winner": str(self.winner.id) if self.winner else None,
                     }
                 if UpdateType.players in player.pending_updates:
                     to_send["players"] = [{

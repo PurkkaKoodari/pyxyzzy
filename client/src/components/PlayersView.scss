@@ -1,5 +1,7 @@
 @import "defs";
 
+$winnerPlayer: #dae1ff;
+
 .in-game .players {
     display: flex;
     flex-wrap: wrap;
@@ -44,6 +46,9 @@
         }
         &.thinking .think-blob {
             display: inline-block;
+        }
+        &.winner {
+            background: $winnerPlayer;
         }
     }
 }
